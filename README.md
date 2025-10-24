@@ -74,10 +74,34 @@ Check the [wiki](https://github.com/outflanknl/RedELK/wiki) for info on usage or
 
 ## Installation (v3.0 Modern Method)
 
-### Option 1: Quick Install (Recommended for Testing)
+### Option 1: Package Installation (Easiest)
+```bash
+# Download .deb package from GitHub Releases
+wget https://github.com/volume19/RedELK/releases/download/v3.0.0/redelk_3.0.0_all.deb
+
+# Install package
+sudo dpkg -i redelk_3.0.0_all.deb
+sudo apt-get install -f  # Fix dependencies if needed
+
+# Run installer
+sudo redelk-install --quickstart
+```
+
+**Done!** Access Kibana at `https://YOUR_SERVER_IP/`
+
+### Option 2: Snap Package (Universal)
+```bash
+# Install from Snap Store (when published)
+sudo snap install redelk --classic
+
+# Run installer
+sudo redelk.install --quickstart
+```
+
+### Option 3: Git Clone (For Development)
 ```bash
 # Clone repository
-git clone https://github.com/outflanknl/RedELK.git
+git clone https://github.com/volume19/RedELK.git
 cd RedELK
 
 # Run quick installer (uses smart defaults)
@@ -86,30 +110,7 @@ sudo python3 install.py --quickstart
 
 **Done!** Access Kibana at `https://YOUR_SERVER_IP/`
 
-### Option 2: Interactive Install (Recommended for Production)
-```bash
-# Run interactive installer
-sudo python3 install.py
-
-# Follow the prompts to configure:
-# - Installation type (full/limited)
-# - Server address
-# - TLS certificates (Let's Encrypt or self-signed)
-# - Project name
-# - Notifications (Email/Slack/Teams)
-```
-
-### Option 3: Using Make
-```bash
-# Quick start
-make quickstart
-
-# Interactive install
-make install
-
-# View all commands
-make help
-```
+For detailed installation instructions, see **[INSTALL.md](INSTALL.md)**
 
 ## Post-Installation
 

@@ -1,0 +1,53 @@
+#!/bin/bash
+# RedELK post-installation script
+
+set -e
+
+# Install Python dependencies
+echo "Installing Python dependencies..."
+pip3 install -q rich>=13.0.0 click>=8.0.0 2>/dev/null || true
+
+# Create redelk user if it doesn't exist
+if ! id -u redelk >/dev/null 2>&1; then
+    useradd -r -s /bin/bash -d /opt/redelk -m redelk || true
+fi
+
+# Set permissions
+chmod +x /usr/bin/redelk
+chmod +x /usr/bin/redelk-install
+chmod +x /usr/bin/redelk-install-agent
+chmod +x /usr/share/redelk/scripts/generate-certificates.py
+chmod +x /usr/share/redelk/scripts/health-check.py
+
+# Add redelk to docker group if it exists
+if getent group docker > /dev/null 2>&1; then
+    usermod -aG docker redelk || true
+fi
+
+# Create necessary directories
+mkdir -p /var/log/redelk
+mkdir -p /etc/redelk
+chown -R redelk:redelk /var/log/redelk
+chown -R redelk:redelk /etc/redelk
+
+echo ""
+echo "========================================"
+echo "RedELK v3.0 installed successfully!"
+echo "========================================"
+echo ""
+echo "Quick Start:"
+echo "  sudo redelk-install --quickstart"
+echo ""
+echo "Interactive Install:"
+echo "  sudo redelk-install"
+echo ""
+echo "Documentation:"
+echo "  /usr/share/doc/redelk/"
+echo ""
+echo "Management:"
+echo "  redelk status"
+echo "  redelk --help"
+echo ""
+
+exit 0
+

@@ -1,0 +1,25 @@
+Package: redelk
+Version: 3.0.0
+Section: admin
+Priority: optional
+Architecture: all
+Depends: python3 (>= 3.8), python3-pip, docker.io (>= 20.10) | docker-ce (>= 20.10), docker-compose-plugin | docker-compose (>= 2.0)
+Recommends: curl, wget, openssl, apache2-utils
+Maintainer: RedELK Team <redelk@outflank.nl>
+Homepage: https://github.com/outflanknl/RedELK
+Description: Red Team SIEM - Track and alarm on Blue Team activities
+ RedELK is a comprehensive Red Team SIEM (Security Information and Event
+ Management) system designed for tracking operations and detecting Blue Team
+ investigation activities.
+ .
+ Features:
+  - Modern Python-based installer with interactive wizard
+  - Support for multiple C2 frameworks (Cobalt Strike, Sliver, PoshC2)
+  - ELK Stack 8.x (Elasticsearch, Logstash, Kibana)
+  - BloodHound CE integration
+  - Real-time health monitoring
+  - Automated certificate generation
+  - Comprehensive dashboards and visualizations
+ .
+ This package provides the main RedELK server installer and management tools.
+

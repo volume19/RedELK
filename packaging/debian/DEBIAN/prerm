@@ -1,0 +1,13 @@
+#!/bin/bash
+# RedELK pre-removal script
+
+set -e
+
+echo "Stopping RedELK services (if running)..."
+if [ -d "/opt/redelk/elkserver" ] && [ -f "/opt/redelk/elkserver/docker-compose.yml" ]; then
+    cd /opt/redelk/elkserver
+    docker-compose down 2>/dev/null || true
+fi
+
+exit 0
+

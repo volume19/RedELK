@@ -1,0 +1,23 @@
+#!/bin/bash
+# RedELK post-removal script
+
+set -e
+
+if [ "$1" = "purge" ]; then
+    echo "Purging RedELK configuration and data..."
+    
+    # Remove logs
+    rm -rf /var/log/redelk
+    
+    # Remove config
+    rm -rf /etc/redelk
+    
+    # Ask about user data
+    echo "Note: Docker volumes and user 'redelk' have NOT been removed."
+    echo "To completely remove all data:"
+    echo "  docker volume rm redelk_es_data redelk_kibana_data"
+    echo "  userdel -r redelk"
+fi
+
+exit 0
+
