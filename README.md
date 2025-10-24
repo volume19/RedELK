@@ -4,10 +4,53 @@
 ![Build docker kibana image (dev)](https://github.com/outflanknl/RedELK/workflows/Build%20docker%20kibana%20image%20(dev)/badge.svg?branch=maindev)
 ![Build docker logstash image (dev)](https://github.com/outflanknl/RedELK/workflows/Build%20docker%20logstash%20image%20(dev)/badge.svg?branch=maindev)
 
-Red Team's SIEM - tool for Red Teams for tracking and alarming about Blue Team activities as well as enhanced usability in long term operations.
+# RedELK v3.0 - Modernized Red Team SIEM
 
-1. **Enhanced usability and overview** for the red team operators by creating a central location where all relevant _operational_ logs from multiple teamservers are collected and enriched. This is great for historic searching within the operation as well as giving a read-only view on the operation (e.g. for the White Team). Especially useful for multi-scenario, multi-teamserver, multi-member and multi-month operations. Also, super easy ways for viewing all screenshots, IOCs, keystrokes output, etc. \o/
-2. **Spot the Blue Team** by having a central location where all _traffic_ logs from redirectors are collected and enriched. Using specific queries its now possible to detect that the Blue Team is investigating your infrastructure.
+> **🎉 Version 3.0** brings massive improvements to deployment, reliability, and user experience!
+
+Red Team's SIEM - A comprehensive tool for Red Teams enabling tracking and alarming about Blue Team activities, plus enhanced usability in long-term operations.
+
+## Core Capabilities
+
+1. **Enhanced usability and overview** - Central location for all relevant _operational_ logs from multiple teamservers. Perfect for historic searching, read-only operational views (e.g., White Team), and multi-scenario/multi-month operations. Easy access to screenshots, IOCs, keystrokes, and more. \o/
+
+2. **Spot the Blue Team** - Central collection of all _traffic_ logs from redirectors with enrichment. Detect Blue Team investigation activities through specific queries and automated alarms.
+
+## 🆕 What's New in v3.0
+
+### Simplified Installation
+- **🚀 One-Command Install**: `sudo python3 install.py --quickstart`
+- **Interactive Installer**: User-friendly prompts with validation and helpful explanations
+- **Pre-flight Checks**: Automatic system validation before installation
+- **Progress Tracking**: Visual progress bars and clear step-by-step indicators
+- **Auto-Configuration**: Smart defaults with auto-detection of system settings
+
+### Modern Technology Stack
+- **⬆️ ELK 8.x**: Upgraded from 7.17.9 to Elasticsearch/Kibana/Logstash 8.11.3
+- **🐳 Docker Compose v3.8**: Modern syntax with comprehensive health checks
+- **✅ Health Monitoring**: All services include health checks and status reporting
+- **🔄 Better Orchestration**: Services start in the correct order with dependency management
+
+### Enhanced User Experience
+- **📊 Rich Terminal UI**: Color-coded output with tables, progress bars, and panels
+- **🛠️ Management CLI**: `./redelk` command for easy service management
+- **📖 Comprehensive Docs**: Quick Start, Troubleshooting, and Architecture guides
+- **🎯 Better Error Messages**: Clear, actionable error messages with solutions
+- **⚡ Makefile Commands**: Quick shortcuts like `make status`, `make logs`, `make restart`
+
+### Improved Deployment
+- **🔐 Auto-Generated Certificates**: Simplified TLS certificate creation
+- **🤖 Unified Agent Installer**: Single tool for both C2 servers and redirectors
+- **📦 Template System**: Clean `.env.template` with inline documentation
+- **🔍 Configuration Validation**: Pre-deployment validation of all settings
+- **💾 Backup & Restore**: Built-in backup capabilities
+
+### Better Reliability
+- **🏥 Health Checks**: Continuous monitoring of all services
+- **🔄 Smart Restarts**: Automatic recovery from common failures
+- **📊 Resource Limits**: Configurable memory and CPU constraints
+- **🌐 Network Optimization**: Improved Docker networking with fixed IPs
+- **📝 Structured Logging**: JSON logs with rotation and filtering
 
 # Background info #
 Check the [wiki](https://github.com/outflanknl/RedELK/wiki) for info on usage or one the blog posts or presentations listed below:
@@ -19,8 +62,121 @@ Check the [wiki](https://github.com/outflanknl/RedELK/wiki) for info on usage or
 - x33fcon 2019 Catching Blue Team OPSEC failures [video](https://www.youtube.com/watch?v=-CNMgh0yJag) and [slides](https://github.com/outflanknl/Presentations/blob/master/x33fcon2019_OutOfTheBlue-CatchingBlueTeamOPSECFailures_publicversion.pdf)
 - BruCon 2018: Using Blue Team techniques in Red Team ops [video](https://www.youtube.com/watch?v=OjtftdPts4g) and [slides](https://github.com/outflanknl/Presentations/blob/master/MirrorOnTheWall_BruCon2018_UsingBlueTeamTechniquesinRedTeamOps_Bergman-Smeets_FINAL.pdf)
 
-# Installation #
-Check the [wiki](https://github.com/outflanknl/RedELK/wiki) for manual installation manual. There are also Ansible playbooks maintained by others:
+# Quick Start
+
+## Prerequisites
+
+- **OS**: Ubuntu 22.04 LTS or Debian 12
+- **RAM**: 4GB minimum (8GB+ recommended)
+- **Disk**: 20GB+ free space
+- **Docker**: 20.10+ with Docker Compose v2
+- **Root access** required
+
+## Installation (v3.0 Modern Method)
+
+### Option 1: Quick Install (Recommended for Testing)
+```bash
+# Clone repository
+git clone https://github.com/outflanknl/RedELK.git
+cd RedELK
+
+# Run quick installer (uses smart defaults)
+sudo python3 install.py --quickstart
+```
+
+**Done!** Access Kibana at `https://YOUR_SERVER_IP/`
+
+### Option 2: Interactive Install (Recommended for Production)
+```bash
+# Run interactive installer
+sudo python3 install.py
+
+# Follow the prompts to configure:
+# - Installation type (full/limited)
+# - Server address
+# - TLS certificates (Let's Encrypt or self-signed)
+# - Project name
+# - Notifications (Email/Slack/Teams)
+```
+
+### Option 3: Using Make
+```bash
+# Quick start
+make quickstart
+
+# Interactive install
+make install
+
+# View all commands
+make help
+```
+
+## Post-Installation
+
+```bash
+# View service status
+./redelk status
+
+# View passwords
+./redelk passwords
+
+# View access URLs
+./redelk urls
+
+# Follow logs
+./redelk logs --follow
+```
+
+## Deploy Agents to C2 Servers / Redirectors
+
+```bash
+# On the RedELK server, package agent configs
+tar czf c2servers.tgz c2servers/
+tar czf redirs.tgz redirs/
+
+# Copy to your C2 server or redirector
+scp c2servers.tgz root@c2server:/tmp/
+
+# On the C2 server/redirector, run the unified installer
+cd /tmp && tar xzf c2servers.tgz
+cd c2servers
+sudo python3 install-agent.py
+```
+
+## Management Commands
+
+```bash
+# Service management
+make status          # Check status
+make logs           # View logs
+make restart        # Restart services
+make stop           # Stop services
+make start          # Start services
+
+# Information
+make passwords      # Show credentials
+make urls          # Show access URLs
+make info          # System info
+
+# Maintenance
+make backup         # Backup data
+make update         # Update RedELK
+make clean          # Clean temporary files
+```
+
+## Documentation
+
+- **[Quick Start Guide](docs/QUICKSTART.md)** - Get up and running in 5 minutes
+- **[Architecture](docs/ARCHITECTURE.md)** - Technical architecture and components
+- **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
+- **[Wiki](https://github.com/outflanknl/RedELK/wiki)** - Comprehensive documentation
+
+## Alternative Installation Methods
+
+### Legacy Installation (v2.x)
+Check the [wiki](https://github.com/outflanknl/RedELK/wiki) for manual installation guide.
+
+### Ansible Playbooks
 - [RedELK Server playbook](https://github.com/fastlorenzo/redelk-server) - maintained by one of RedELK's developers
 - [RedELK Client playbook](https://github.com/fastlorenzo/redelk-client) - maintained by one of RedELK's developers
 - [ansible-redelk](https://github.com/curi0usJack/ansible-redelk) - maintained by curi0usJack/TrustedSec

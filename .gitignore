@@ -146,3 +146,13 @@ elkserver/mounts/redelk-config/etc/redelk/rogue_useragents.conf
 elkserver/mounts/redelk-config/etc/redelk/roguedomains.conf
 redirs/filebeat/filebeat.yml
 c2servers/filebeat/filebeat_redelk_main.yml
+
+# v3.0 specific
+elkserver/.env
+env.local
+*.local
+redelk-install.log
+VALIDATION_REPORT.md
+IMPLEMENTATION_SUMMARY.md
+COMPLETION_SUMMARY.txt
+V3_RELEASE_NOTES.md
