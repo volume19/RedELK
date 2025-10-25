@@ -13,6 +13,9 @@ readonly ELASTIC_PASSWORD="RedElk2024Secure"
 readonly KIBANA_PASSWORD="KibanaRedElk2024"
 readonly ES_JAVA_OPTS="-Xms2g -Xmx2g"
 
+# Export for Docker Compose
+export REDELK_PATH ELASTIC_PASSWORD KIBANA_PASSWORD ES_JAVA_OPTS
+
 # Detect Docker Compose command
 if command -v docker &>/dev/null && docker compose version &>/dev/null; then
     readonly COMPOSE_CMD="docker compose"
@@ -434,11 +437,6 @@ EOF
 start_stack() {
     echo "[INFO] Starting RedELK stack..."
     cd "${REDELK_PATH}/elkserver/docker"
-
-    # Export environment variables
-    export REDELK_PATH="${REDELK_PATH}"
-    export ELASTIC_PASSWORD="${ELASTIC_PASSWORD}"
-    export ES_JAVA_OPTS="${ES_JAVA_OPTS}"
 
     # Stop any existing containers
     $COMPOSE_CMD down 2>/dev/null || true
