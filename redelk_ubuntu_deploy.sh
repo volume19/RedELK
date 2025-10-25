@@ -223,8 +223,6 @@ create_docker_compose() {
     log "Creating Docker Compose configuration..."
 
     cat > ${REDELK_PATH}/elkserver/docker/docker-compose.yml <<'EOF'
-version: '3.8'
-
 networks:
   redelk:
     driver: bridge
@@ -244,20 +242,16 @@ services:
       - discovery.type=single-node
       - xpack.security.enabled=true
       - xpack.security.authc.api_key.enabled=true
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-RedElk2024Secure!}
-      - bootstrap.memory_lock=true
+      - ELASTIC_PASSWORD=RedElk2024Secure!
+      - bootstrap.memory_lock=false
       - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
     volumes:
       - esdata:/usr/share/elasticsearch/data
       - /opt/RedELK/certs:/usr/share/elasticsearch/config/certs:ro
     ports:
       - "127.0.0.1:9200:9200"
     healthcheck:
-      test: ["CMD-SHELL", "curl -s -k https://localhost:9200/_cluster/health -u elastic:${ELASTIC_PASSWORD:-RedElk2024Secure!} | grep -q '\"status\":\"[green|yellow]\"'"]
+      test: ["CMD-SHELL", "curl -s -k https://localhost:9200/_cluster/health -u elastic:RedElk2024Secure! | grep -q 'status'"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -270,7 +264,7 @@ services:
       redelk:
         ipv4_address: 172.28.0.3
     environment:
-      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD:-RedElk2024Secure!}
+      - ELASTIC_PASSWORD=RedElk2024Secure!
       - xpack.monitoring.enabled=false
       - "LS_JAVA_OPTS=-Xmx1g -Xms1g"
     volumes:
@@ -294,7 +288,7 @@ services:
       - SERVERNAME=kibana
       - ELASTICSEARCH_HOSTS=https://elasticsearch:9200
       - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=${KIBANA_PASSWORD:-KibanaRedElk2024!}
+      - ELASTICSEARCH_PASSWORD=KibanaRedElk2024!
       - ELASTICSEARCH_SSL_VERIFICATIONMODE=none
       - SERVER_SSL_ENABLED=true
       - SERVER_SSL_CERTIFICATE=/usr/share/kibana/config/certs/elkserver.crt
@@ -492,6 +486,17 @@ configure_firewall() {
     log "Firewall configured "
 }
 
+# Configure system settings
+configure_system() {
+    log "Configuring system settings for Elasticsearch..."
+
+    # Set vm.max_map_count for Elasticsearch
+    sysctl -w vm.max_map_count=262144 > /dev/null 2>&1
+    echo "vm.max_map_count=262144" >> /etc/sysctl.conf
+
+    log "System settings configured"
+}
+
 # Start services
 start_services() {
     log "Starting RedELK services..."
@@ -618,6 +623,7 @@ main() {
     create_logstash_pipeline
     create_systemd_service
     configure_firewall
+    configure_system
     start_services
     setup_passwords
     create_deployment_packages
