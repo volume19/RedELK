@@ -14,7 +14,10 @@
       "Bash(awk '{print \"\"\"\"  \"\"\"\" $9 \"\"\"\" (\"\"\"\" $5 \"\"\"\")\"\"\"\"}')",
       "Bash(awk:*)",
       "Bash(ipconfig:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []
