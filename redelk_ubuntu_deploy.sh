@@ -4,8 +4,8 @@
 # Deploys complete RedELK stack on fresh Ubuntu 20.04/22.04/24.04
 # Run with: bash redelk_ubuntu_deploy.sh
 #
-set -eu
-set -o pipefail 2>/dev/null || true
+# Simple error handling for maximum compatibility
+set -e
 
 # Colors
 RED='\033[0;31m'
@@ -22,7 +22,7 @@ ELK_VERSION="8.11.3"
 
 # Banner
 print_banner() {
-    echo -e "${BLUE}"
+    echo ""
     echo "    ____            _  _____  _      _  __"
     echo "   |  _ \  ___   __| || ____|| |    | |/ /"
     echo "   | |_) |/ _ \ / _  ||  _|  | |    | ' / "
@@ -30,38 +30,41 @@ print_banner() {
     echo "   |_| \__\___| \____||_____||_____||_|\_\\"
     echo ""
     echo "   Ubuntu Server Deployment v${REDELK_VERSION}"
-    echo -e "${NC}"
+    echo ""
 }
 
 # Log function
 log() {
-    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $1"
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
 }
 
 error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo "[ERROR] $1"
     exit 1
 }
 
 # Check if running as root
 check_root() {
-    if [[ $EUID -ne 0 ]]; then
+    if [ "$EUID" -ne 0 ]; then
         error "This script must be run as root (use sudo)"
     fi
 }
 
 # Check Ubuntu version
 check_ubuntu() {
-    if ! command -v lsb_release &> /dev/null; then
+    if ! command -v lsb_release > /dev/null 2>&1; then
         error "This script requires Ubuntu 20.04/22.04/24.04"
     fi
 
     VERSION=$(lsb_release -rs)
-    if [[ ! "$VERSION" =~ ^(20\.04|22\.04|24\.04)$ ]]; then
-        error "Unsupported Ubuntu version: $VERSION. Requires 20.04/22.04/24.04"
-    fi
-
-    log "Ubuntu $VERSION detected ✓"
+    case "$VERSION" in
+        20.04|22.04|24.04)
+            log "Ubuntu $VERSION detected"
+            ;;
+        *)
+            error "Unsupported Ubuntu version: $VERSION. Requires 20.04/22.04/24.04"
+            ;;
+    esac
 }
 
 # Update system
@@ -86,8 +89,8 @@ update_system() {
 
 # Install Docker
 install_docker() {
-    if command -v docker &> /dev/null; then
-        log "Docker already installed ✓"
+    if command -v docker > /dev/null 2>&1; then
+        log "Docker already installed"
         return
     fi
 
@@ -113,13 +116,13 @@ install_docker() {
     systemctl start docker
     systemctl enable docker
 
-    log "Docker installed successfully ✓"
+    log "Docker installed successfully "
 }
 
 # Install Docker Compose
 install_docker_compose() {
-    if command -v docker-compose &> /dev/null; then
-        log "Docker Compose already installed ✓"
+    if command -v docker-compose > /dev/null 2>&1; then
+        log "Docker Compose already installed"
         return
     fi
 
@@ -131,7 +134,7 @@ install_docker_compose() {
     # Create symlink for backwards compatibility
     ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
 
-    log "Docker Compose installed successfully ✓"
+    log "Docker Compose installed successfully "
 }
 
 # Create RedELK directory structure
@@ -142,7 +145,7 @@ create_directories() {
     mkdir -p ${REDELK_PATH}/elkserver/{docker,config,logstash,kibana,elasticsearch,nginx,neo4j}
     mkdir -p ${REDELK_PATH}/elkserver/logstash/{pipelines,ruby-scripts}
 
-    log "Directory structure created ✓"
+    log "Directory structure created "
 }
 
 # Generate certificates
@@ -197,7 +200,7 @@ EOF
     # Generate SSH keys
     ssh-keygen -t ed25519 -f sshkey -N "" -C "redelk@${HOSTNAME}"
 
-    log "Certificates generated ✓"
+    log "Certificates generated "
 }
 
 # Download RedELK files
@@ -214,7 +217,7 @@ download_redelk() {
         cp -r /tmp/redelk/* ${REDELK_PATH}/ 2>/dev/null || true
     fi
 
-    log "RedELK files downloaded ✓"
+    log "RedELK files downloaded "
 }
 
 # Create Docker Compose configuration
@@ -336,7 +339,7 @@ LOGSTASH_PASSWORD=LogstashRedElk2024!
 COMPOSE_PROJECT_NAME=redelk
 EOF
 
-    log "Docker Compose configuration created ✓"
+    log "Docker Compose configuration created "
 }
 
 # Create Nginx configuration
@@ -383,7 +386,7 @@ http {
 }
 EOF
 
-    log "Nginx configuration created ✓"
+    log "Nginx configuration created "
 }
 
 # Create basic Logstash pipeline
@@ -430,7 +433,7 @@ output {
 }
 EOF
 
-    log "Logstash pipeline created ✓"
+    log "Logstash pipeline created "
 }
 
 # Create systemd service
@@ -458,7 +461,7 @@ EOF
     systemctl daemon-reload
     systemctl enable redelk
 
-    log "Systemd service created ✓"
+    log "Systemd service created "
 }
 
 # Configure firewall
@@ -466,7 +469,7 @@ configure_firewall() {
     log "Configuring firewall..."
 
     # Enable UFW if not already
-    if ! command -v ufw &> /dev/null; then
+    if ! command -v ufw > /dev/null 2>&1; then
         apt-get install -y ufw
     fi
 
@@ -487,7 +490,7 @@ configure_firewall() {
 
     ufw reload
 
-    log "Firewall configured ✓"
+    log "Firewall configured "
 }
 
 # Start services
@@ -509,7 +512,7 @@ start_services() {
     # Check service status
     docker-compose ps
 
-    log "Services started ✓"
+    log "Services started "
 }
 
 # Setup Elasticsearch passwords
@@ -520,12 +523,12 @@ setup_passwords() {
     sleep 20
 
     # Set kibana_system password
-    docker exec -it redelk-elasticsearch elasticsearch-reset-password -u kibana_system -b -i <<< "KibanaRedElk2024!"
+    echo "KibanaRedElk2024!" | docker exec -i redelk-elasticsearch elasticsearch-reset-password -u kibana_system -b -i
 
     # Create redelk user
-    docker exec -it redelk-elasticsearch elasticsearch-users useradd redelk -p redelk -r superuser || true
+    docker exec redelk-elasticsearch elasticsearch-users useradd redelk -p redelk -r superuser 2>/dev/null || true
 
-    log "Passwords configured ✓"
+    log "Passwords configured "
 }
 
 # Create package for remote deployments
@@ -547,45 +550,45 @@ create_deployment_packages() {
         certs/elkserver.crt \
         redirs/filebeat.yml
 
-    log "Deployment packages created ✓"
+    log "Deployment packages created "
 }
 
 # Print summary
 print_summary() {
-    SERVER_IP=$(ip addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '127.0.0.1' | head -1)
+    SERVER_IP=$(ip addr show | grep 'inet ' | grep -v '127.0.0.1' | head -1 | awk '{print $2}' | cut -d/ -f1)
 
     echo ""
-    echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
-    echo -e "${GREEN}       RedELK v${REDELK_VERSION} Installation Complete!${NC}"
-    echo -e "${GREEN}═══════════════════════════════════════════════════════════════${NC}"
+    echo "================================================================"
+    echo "       RedELK v${REDELK_VERSION} Installation Complete!"
+    echo "================================================================"
     echo ""
-    echo -e "${BLUE}Access Kibana:${NC}"
-    echo -e "  URL: ${YELLOW}https://${SERVER_IP}/${NC}"
-    echo -e "  Username: ${YELLOW}redelk${NC}"
-    echo -e "  Password: ${YELLOW}redelk${NC}"
+    echo "Access Kibana:"
+    echo "  URL: https://${SERVER_IP}/"
+    echo "  Username: redelk"
+    echo "  Password: redelk"
     echo ""
-    echo -e "${BLUE}Elasticsearch:${NC}"
-    echo -e "  URL: ${YELLOW}https://${SERVER_IP}:9200${NC}"
-    echo -e "  Username: ${YELLOW}elastic${NC}"
-    echo -e "  Password: ${YELLOW}RedElk2024Secure!${NC}"
+    echo "Elasticsearch:"
+    echo "  URL: https://${SERVER_IP}:9200"
+    echo "  Username: elastic"
+    echo "  Password: RedElk2024Secure!"
     echo ""
-    echo -e "${BLUE}Deployment Packages:${NC}"
-    echo -e "  C2 Servers: ${YELLOW}${REDELK_PATH}/c2servers.tgz${NC}"
-    echo -e "  Redirectors: ${YELLOW}${REDELK_PATH}/redirs.tgz${NC}"
+    echo "Deployment Packages:"
+    echo "  C2 Servers: ${REDELK_PATH}/c2servers.tgz"
+    echo "  Redirectors: ${REDELK_PATH}/redirs.tgz"
     echo ""
-    echo -e "${BLUE}Service Management:${NC}"
-    echo -e "  Start: ${YELLOW}systemctl start redelk${NC}"
-    echo -e "  Stop: ${YELLOW}systemctl stop redelk${NC}"
-    echo -e "  Status: ${YELLOW}systemctl status redelk${NC}"
-    echo -e "  Logs: ${YELLOW}docker-compose -f ${REDELK_PATH}/elkserver/docker/docker-compose.yml logs${NC}"
+    echo "Service Management:"
+    echo "  Start: systemctl start redelk"
+    echo "  Stop: systemctl stop redelk"
+    echo "  Status: systemctl status redelk"
+    echo "  Logs: docker-compose -f ${REDELK_PATH}/elkserver/docker/docker-compose.yml logs"
     echo ""
-    echo -e "${GREEN}Next Steps:${NC}"
+    echo "Next Steps:"
     echo "  1. Change default passwords immediately"
     echo "  2. Deploy Filebeat on C2 servers using c2servers.tgz"
     echo "  3. Deploy Filebeat on redirectors using redirs.tgz"
     echo "  4. Import Kibana dashboards"
     echo ""
-    echo -e "${GREEN}Installation log: ${REDELK_PATH}/logs/install.log${NC}"
+    echo "Installation log: ${REDELK_PATH}/logs/install.log"
     echo ""
 }
 
