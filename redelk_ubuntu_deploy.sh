@@ -154,8 +154,14 @@ generate_certificates() {
 
     cd ${REDELK_PATH}/certs
 
+    # Skip if already generated
+    if [ -f "elkserver.crt" ] && [ -f "redelkCA.crt" ] && [ -f "sshkey" ]; then
+        log "Certificates already exist, skipping generation "
+        return
+    fi
+
     # Get server IP
-    SERVER_IP=$(ip addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '127.0.0.1' | head -1)
+    SERVER_IP=$(ip addr show | grep 'inet ' | grep -v '127.0.0.1' | head -1 | awk '{print $2}' | cut -d/ -f1)
 
     # Create OpenSSL config
     cat > config.cnf <<EOF
@@ -197,27 +203,19 @@ EOF
         -CAcreateserial -out elkserver.crt -days 3650 -extensions v3_req \
         -extfile config.cnf
 
-    # Generate SSH keys
-    ssh-keygen -t ed25519 -f sshkey -N "" -C "redelk@${HOSTNAME}"
+    # Generate SSH keys (force overwrite if exists)
+    rm -f sshkey sshkey.pub 2>/dev/null || true
+    ssh-keygen -t ed25519 -f sshkey -N "" -C "redelk@${HOSTNAME}" -q
 
     log "Certificates generated "
 }
 
 # Download RedELK files
 download_redelk() {
-    log "Downloading RedELK configuration files..."
-
-    cd ${REDELK_PATH}
-
-    # Clone repository or download release
-    if [ -d ".git" ]; then
-        git pull
-    else
-        git clone https://github.com/outflanknl/RedELK.git /tmp/redelk
-        cp -r /tmp/redelk/* ${REDELK_PATH}/ 2>/dev/null || true
-    fi
-
-    log "RedELK files downloaded "
+    log "Preparing RedELK configuration..."
+    # All configurations are created by this script
+    # No need to download anything
+    log "RedELK configuration prepared "
 }
 
 # Create Docker Compose configuration
