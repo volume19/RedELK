@@ -4,7 +4,8 @@
 # Deploys complete RedELK stack on fresh Ubuntu 20.04/22.04/24.04
 # Run with: bash redelk_ubuntu_deploy.sh
 #
-set -euo pipefail
+set -eu
+set -o pipefail 2>/dev/null || true
 
 # Colors
 RED='\033[0;31m'
