@@ -1,26 +1,32 @@
-#!/bin/bash
-#
-# RedELK v3.0 - Ubuntu Server Deployment Script
-# Deploys complete RedELK stack on fresh Ubuntu 20.04/22.04/24.04
-# Run with: bash redelk_ubuntu_deploy.sh
-#
-# Simple error handling for maximum compatibility
-set -e
+#!/usr/bin/env bash
+# RedELK v3.0 - Production Deployment Script
+# Fully idempotent, non-interactive deployment for Ubuntu 20.04/22.04/24.04
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
+set -Eeuo pipefail
+trap 'echo "Error at line $LINENO: $BASH_COMMAND" >&2' ERR
 
-# Configuration
-REDELK_VERSION="3.0"
-REDELK_PATH="/opt/RedELK"
-DOCKER_COMPOSE_VERSION="2.34.0"
-ELK_VERSION="8.11.3"
+# Constants
+readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly LOG_FILE="/var/log/redelk_deploy.log"
+readonly REDELK_PATH="/opt/RedELK"
+readonly ELASTIC_PASSWORD="RedElk2024Secure"
+readonly KIBANA_PASSWORD="KibanaRedElk2024"
+readonly ES_JAVA_OPTS="-Xms2g -Xmx2g"
 
-# Banner
+# Detect Docker Compose command
+if command -v docker &>/dev/null && docker compose version &>/dev/null; then
+    readonly COMPOSE_CMD="docker compose"
+elif command -v docker-compose &>/dev/null; then
+    readonly COMPOSE_CMD="docker-compose"
+else
+    echo "Docker Compose not found"
+    exit 1
+fi
+
+# Logging setup
+exec > >(tee -a "$LOG_FILE")
+exec 2>&1
+
 print_banner() {
     echo ""
     echo "    ____            _  _____  _      _  __"
@@ -29,139 +35,123 @@ print_banner() {
     echo "   |  _ <|  __/| (_| || |___ | |___ | . \ "
     echo "   |_| \__\___| \____||_____||_____||_|\_\\"
     echo ""
-    echo "   Ubuntu Server Deployment v${REDELK_VERSION}"
+    echo "   Ubuntu Server Deployment v3.0"
     echo ""
 }
 
-# Log function
-log() {
-    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
+sanitize_script() {
+    # Remove Windows line endings and BOM
+    sed -i 's/\r$//' "$0" 2>/dev/null || true
+    sed -i '1s/^\xEF\xBB\xBF//' "$0" 2>/dev/null || true
 }
 
-error() {
-    echo "[ERROR] $1"
-    exit 1
-}
-
-# Check if running as root
 check_root() {
-    if [ "$EUID" -ne 0 ]; then
-        error "This script must be run as root (use sudo)"
+    if [[ $EUID -ne 0 ]]; then
+        echo "[ERROR] This script must be run as root"
+        exit 1
     fi
 }
 
-# Check Ubuntu version
+print_facts() {
+    echo "[INFO] Host: $(hostname)"
+    echo "[INFO] OS: $(lsb_release -ds 2>/dev/null || echo "Unknown")"
+    echo "[INFO] Docker: $(docker --version 2>/dev/null || echo "Not installed")"
+    echo "[INFO] Compose: $COMPOSE_CMD"
+    echo "[INFO] REDELK_PATH: $REDELK_PATH"
+    echo "[INFO] Timestamp: $(date -Iseconds)"
+}
+
 check_ubuntu() {
     if ! command -v lsb_release > /dev/null 2>&1; then
-        error "This script requires Ubuntu 20.04/22.04/24.04"
+        echo "[ERROR] This script requires Ubuntu"
+        exit 1
     fi
 
-    VERSION=$(lsb_release -rs)
-    case "$VERSION" in
+    local version=$(lsb_release -rs)
+    case "$version" in
         20.04|22.04|24.04)
-            log "Ubuntu $VERSION detected"
+            echo "[INFO] Ubuntu $version detected"
             ;;
         *)
-            error "Unsupported Ubuntu version: $VERSION. Requires 20.04/22.04/24.04"
+            echo "[ERROR] Unsupported Ubuntu version: $version"
+            exit 1
             ;;
     esac
 }
 
-# Update system
-update_system() {
-    log "Updating system packages..."
-    apt-get update -y
-    apt-get upgrade -y
-    apt-get install -y \
+install_dependencies() {
+    echo "[INFO] Installing dependencies..."
+    apt-get update -qq
+    apt-get install -y -qq \
         curl \
-        wget \
-        git \
         openssl \
         ca-certificates \
         gnupg \
         lsb-release \
         net-tools \
-        htop \
-        vim \
-        jq \
-        unzip
+        jq
 }
 
-# Install Docker
 install_docker() {
     if command -v docker > /dev/null 2>&1; then
-        log "Docker already installed"
+        echo "[INFO] Docker already installed"
         return
     fi
 
-    log "Installing Docker..."
-
-    # Remove old versions
+    echo "[INFO] Installing Docker..."
     apt-get remove -y docker docker-engine docker.io containerd runc 2>/dev/null || true
 
-    # Add Docker's official GPG key
     mkdir -p /etc/apt/keyrings
     curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 
-    # Set up repository
-    echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-      $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
+        tee /etc/apt/sources.list.d/docker.list > /dev/null
 
-    # Install Docker Engine
-    apt-get update -y
-    apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+    apt-get update -qq
+    apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-    # Start and enable Docker
     systemctl start docker
     systemctl enable docker
-
-    log "Docker installed successfully "
 }
 
-# Install Docker Compose
-install_docker_compose() {
-    if command -v docker-compose > /dev/null 2>&1; then
-        log "Docker Compose already installed"
-        return
-    fi
+setup_kernel() {
+    echo "[INFO] Configuring kernel parameters..."
 
-    log "Installing Docker Compose v${DOCKER_COMPOSE_VERSION}..."
+    # Set vm.max_map_count for Elasticsearch
+    sysctl -w vm.max_map_count=262144 >/dev/null 2>&1
 
-    # Install Docker Compose v2
-    apt-get install -y docker-compose-plugin
+    # Persist the setting
+    cat > /etc/sysctl.d/99-elasticsearch.conf <<EOF
+# Elasticsearch kernel requirements
+vm.max_map_count=262144
+EOF
 
-    # Create symlink for backwards compatibility
-    ln -sf /usr/libexec/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose
-
-    log "Docker Compose installed successfully "
+    # Reload sysctl
+    sysctl --system >/dev/null 2>&1
 }
 
-# Create RedELK directory structure
 create_directories() {
-    log "Creating RedELK directory structure..."
+    echo "[INFO] Creating directory structure..."
+    mkdir -p "${REDELK_PATH}"/{elkserver/{docker,nginx,logstash/pipelines},certs,logs}
 
-    mkdir -p ${REDELK_PATH}/{elkserver,c2servers,redirs,certs,scripts,logs}
-    mkdir -p ${REDELK_PATH}/elkserver/{docker,config,logstash,kibana,elasticsearch,nginx,neo4j}
-    mkdir -p ${REDELK_PATH}/elkserver/logstash/{pipelines,ruby-scripts}
-
-    log "Directory structure created "
+    # Set proper permissions for Elasticsearch
+    mkdir -p "${REDELK_PATH}/elasticsearch-data"
+    chown -R 1000:1000 "${REDELK_PATH}/elasticsearch-data"
 }
 
-# Generate certificates
 generate_certificates() {
-    log "Generating TLS certificates..."
-
-    cd ${REDELK_PATH}/certs
+    echo "[INFO] Generating TLS certificates..."
+    local cert_dir="${REDELK_PATH}/certs"
+    cd "$cert_dir"
 
     # Skip if already generated
-    if [ -f "elkserver.crt" ] && [ -f "redelkCA.crt" ] && [ -f "sshkey" ]; then
-        log "Certificates already exist, skipping generation "
+    if [[ -f elkserver.crt && -f redelkCA.crt && -f sshkey ]]; then
+        echo "[INFO] Certificates already exist, skipping"
         return
     fi
 
     # Get server IP
-    SERVER_IP=$(ip addr show | grep 'inet ' | grep -v '127.0.0.1' | head -1 | awk '{print $2}' | cut -d/ -f1)
+    local server_ip=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
 
     # Create OpenSSL config
     cat > config.cnf <<EOF
@@ -171,174 +161,177 @@ req_extensions = v3_req
 prompt = no
 
 [req_distinguished_name]
-C = US
-ST = State
-L = City
-O = RedELK
-OU = Security
 CN = redelk.local
 
 [v3_req]
-keyUsage = critical, digitalSignature, keyEncipherment
-extendedKeyUsage = serverAuth, clientAuth
 subjectAltName = @alt_names
 
 [alt_names]
 DNS.1 = localhost
 DNS.2 = redelk.local
-DNS.3 = *.redelk.local
+DNS.3 = elasticsearch
+DNS.4 = kibana
 IP.1 = 127.0.0.1
-IP.2 = ${SERVER_IP}
+IP.2 = ${server_ip}
 EOF
 
     # Generate CA
-    openssl genrsa -out redelkCA.key 4096
+    openssl genrsa -out redelkCA.key 4096 2>/dev/null
     openssl req -new -x509 -days 3650 -key redelkCA.key -out redelkCA.crt \
-        -subj "/C=US/ST=State/L=City/O=RedELK/CN=RedELK CA"
+        -subj "/CN=RedELK CA" 2>/dev/null
 
     # Generate server certificate
-    openssl genrsa -out elkserver.key 4096
-    openssl req -new -key elkserver.key -out elkserver.csr -config config.cnf
+    openssl genrsa -out elkserver.key 4096 2>/dev/null
+    openssl req -new -key elkserver.key -out elkserver.csr -config config.cnf 2>/dev/null
     openssl x509 -req -in elkserver.csr -CA redelkCA.crt -CAkey redelkCA.key \
         -CAcreateserial -out elkserver.crt -days 3650 -extensions v3_req \
-        -extfile config.cnf
+        -extfile config.cnf 2>/dev/null
 
-    # Generate SSH keys (force overwrite if exists)
-    rm -f sshkey sshkey.pub 2>/dev/null || true
-    ssh-keygen -t ed25519 -f sshkey -N "" -C "redelk@${HOSTNAME}" -q
-
-    log "Certificates generated "
+    # Generate SSH keys
+    rm -f sshkey sshkey.pub
+    ssh-keygen -t ed25519 -f sshkey -N "" -q
 }
 
-# Download RedELK files
-download_redelk() {
-    log "Preparing RedELK configuration..."
-    # All configurations are created by this script
-    # No need to download anything
-    log "RedELK configuration prepared "
+check_ports() {
+    echo "[INFO] Checking port availability..."
+    local ports=(80 443 5601 5044 9200)
+    local port_in_use=false
+
+    for port in "${ports[@]}"; do
+        if ss -ltn | grep -q ":$port "; then
+            echo "[ERROR] Port $port is already in use"
+            echo "Run: ss -ltnp | grep :$port"
+            port_in_use=true
+        fi
+    done
+
+    if [[ "$port_in_use" == "true" ]]; then
+        exit 1
+    fi
 }
 
-# Create Docker Compose configuration
+create_env_file() {
+    echo "[INFO] Creating environment file..."
+    cat > "${REDELK_PATH}/elkserver/docker/.env" <<EOF
+# RedELK Environment Configuration
+REDELK_PATH=${REDELK_PATH}
+ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+KIBANA_PASSWORD=${KIBANA_PASSWORD}
+ES_JAVA_OPTS=${ES_JAVA_OPTS}
+COMPOSE_PROJECT_NAME=redelk
+EOF
+}
+
 create_docker_compose() {
-    log "Creating Docker Compose configuration..."
+    echo "[INFO] Creating Docker Compose configuration..."
+    cat > "${REDELK_PATH}/elkserver/docker/docker-compose.yml" <<'EOF'
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
+    container_name: redelk-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - xpack.security.enabled=true
+      - xpack.security.http.ssl.enabled=false
+      - xpack.security.authc.api_key.enabled=true
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - ES_JAVA_OPTS=${ES_JAVA_OPTS}
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - ${REDELK_PATH}/elasticsearch-data:/usr/share/elasticsearch/data
+      - ${REDELK_PATH}/certs:/usr/share/elasticsearch/config/certs:ro
+    ports:
+      - "127.0.0.1:9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s | grep -q status"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    networks:
+      - redelk
 
-    cat > ${REDELK_PATH}/elkserver/docker/docker-compose.yml <<'EOF'
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.3
+    container_name: redelk-logstash
+    restart: unless-stopped
+    environment:
+      - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
+      - xpack.monitoring.enabled=false
+      - LS_JAVA_OPTS=-Xmx1g -Xms1g
+    volumes:
+      - ${REDELK_PATH}/elkserver/logstash/pipelines:/usr/share/logstash/pipeline:ro
+      - ${REDELK_PATH}/certs:/usr/share/logstash/config/certs:ro
+    ports:
+      - "0.0.0.0:5044:5044"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - redelk
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.3
+    container_name: redelk-kibana
+    restart: unless-stopped
+    environment:
+      - SERVERNAME=kibana
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - ELASTICSEARCH_USERNAME=elastic
+      - ELASTICSEARCH_PASSWORD=${ELASTIC_PASSWORD}
+      - ELASTICSEARCH_SSL_VERIFICATIONMODE=none
+      - SERVER_SSL_ENABLED=false
+      - TELEMETRY_ENABLED=false
+    ports:
+      - "127.0.0.1:5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5601/api/status | grep -q available"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+    networks:
+      - redelk
+
+  nginx:
+    image: nginx:alpine
+    container_name: redelk-nginx
+    restart: unless-stopped
+    volumes:
+      - ${REDELK_PATH}/elkserver/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ${REDELK_PATH}/certs:/etc/nginx/certs:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      kibana:
+        condition: service_healthy
+    networks:
+      - redelk
+
 networks:
   redelk:
     driver: bridge
     ipam:
       config:
         - subnet: 172.28.0.0/16
-
-services:
-  elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
-    container_name: redelk-elasticsearch
-    restart: always
-    networks:
-      redelk:
-        ipv4_address: 172.28.0.2
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=true
-      - xpack.security.authc.api_key.enabled=true
-      - ELASTIC_PASSWORD=RedElk2024Secure!
-      - bootstrap.memory_lock=false
-      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
-    volumes:
-      - esdata:/usr/share/elasticsearch/data
-      - /opt/RedELK/certs:/usr/share/elasticsearch/config/certs:ro
-    ports:
-      - "127.0.0.1:9200:9200"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -s -k https://localhost:9200/_cluster/health -u elastic:RedElk2024Secure! | grep -q 'status'"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
-  logstash:
-    image: docker.elastic.co/logstash/logstash:8.11.3
-    container_name: redelk-logstash
-    restart: always
-    networks:
-      redelk:
-        ipv4_address: 172.28.0.3
-    environment:
-      - ELASTIC_PASSWORD=RedElk2024Secure!
-      - xpack.monitoring.enabled=false
-      - "LS_JAVA_OPTS=-Xmx1g -Xms1g"
-    volumes:
-      - /opt/RedELK/elkserver/logstash/pipelines:/usr/share/logstash/pipeline:ro
-      - /opt/RedELK/elkserver/logstash/ruby-scripts:/usr/share/logstash/ruby-scripts:ro
-      - /opt/RedELK/certs:/usr/share/logstash/config/certs:ro
-    ports:
-      - "0.0.0.0:5044:5044"
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-
-  kibana:
-    image: docker.elastic.co/kibana/kibana:8.11.3
-    container_name: redelk-kibana
-    restart: always
-    networks:
-      redelk:
-        ipv4_address: 172.28.0.4
-    environment:
-      - SERVERNAME=kibana
-      - ELASTICSEARCH_HOSTS=https://elasticsearch:9200
-      - ELASTICSEARCH_USERNAME=kibana_system
-      - ELASTICSEARCH_PASSWORD=KibanaRedElk2024!
-      - ELASTICSEARCH_SSL_VERIFICATIONMODE=none
-      - SERVER_SSL_ENABLED=true
-      - SERVER_SSL_CERTIFICATE=/usr/share/kibana/config/certs/elkserver.crt
-      - SERVER_SSL_KEY=/usr/share/kibana/config/certs/elkserver.key
-    volumes:
-      - /opt/RedELK/certs:/usr/share/kibana/config/certs:ro
-    ports:
-      - "127.0.0.1:5601:5601"
-    depends_on:
-      elasticsearch:
-        condition: service_healthy
-
-  nginx:
-    image: nginx:alpine
-    container_name: redelk-nginx
-    restart: always
-    networks:
-      redelk:
-        ipv4_address: 172.28.0.5
-    volumes:
-      - /opt/RedELK/elkserver/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - /opt/RedELK/certs:/etc/nginx/certs:ro
-    ports:
-      - "443:443"
-      - "80:80"
-    depends_on:
-      - kibana
-
-volumes:
-  esdata:
-    driver: local
 EOF
-
-    # Create .env file
-    cat > ${REDELK_PATH}/elkserver/docker/.env <<EOF
-# RedELK Environment Configuration
-ELASTIC_PASSWORD=RedElk2024Secure!
-KIBANA_PASSWORD=KibanaRedElk2024!
-LOGSTASH_PASSWORD=LogstashRedElk2024!
-COMPOSE_PROJECT_NAME=redelk
-EOF
-
-    log "Docker Compose configuration created "
 }
 
-# Create Nginx configuration
 create_nginx_config() {
-    log "Creating Nginx configuration..."
-
-    cat > ${REDELK_PATH}/elkserver/nginx/nginx.conf <<'EOF'
+    echo "[INFO] Creating Nginx configuration..."
+    cat > "${REDELK_PATH}/elkserver/nginx/nginx.conf" <<'EOF'
 events {
     worker_connections 1024;
 }
@@ -350,7 +343,8 @@ http {
 
     server {
         listen 80;
-        return 301 https://$server_name$request_uri;
+        server_name _;
+        return 301 https://$host$request_uri;
     }
 
     server {
@@ -363,7 +357,7 @@ http {
         ssl_ciphers HIGH:!aNULL:!MD5;
 
         location / {
-            proxy_pass https://kibana;
+            proxy_pass http://kibana;
             proxy_http_version 1.1;
             proxy_set_header Upgrade $http_upgrade;
             proxy_set_header Connection 'upgrade';
@@ -372,80 +366,62 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
-            proxy_ssl_verify off;
+            proxy_buffering off;
         }
     }
 }
 EOF
-
-    log "Nginx configuration created "
 }
 
-# Create basic Logstash pipeline
 create_logstash_pipeline() {
-    log "Creating Logstash pipeline..."
-
-    cat > ${REDELK_PATH}/elkserver/logstash/pipelines/main.conf <<'EOF'
+    echo "[INFO] Creating Logstash pipeline..."
+    cat > "${REDELK_PATH}/elkserver/logstash/pipelines/main.conf" <<'EOF'
 input {
   beats {
     port => 5044
-    ssl => true
-    ssl_certificate => "/usr/share/logstash/config/certs/elkserver.crt"
-    ssl_key => "/usr/share/logstash/config/certs/elkserver.key"
-    ssl_verify_mode => "force_peer"
-    ssl_certificate_authorities => ["/usr/share/logstash/config/certs/redelkCA.crt"]
+    ssl => false
   }
 }
 
 filter {
-  # Add your filter logic here
   mutate {
     add_field => { "[@metadata][index_prefix]" => "redelk" }
-  }
-
-  # Parse timestamps
-  date {
-    match => [ "timestamp", "ISO8601", "yyyy-MM-dd HH:mm:ss" ]
-    target => "@timestamp"
   }
 }
 
 output {
   elasticsearch {
-    hosts => ["https://elasticsearch:9200"]
+    hosts => ["http://elasticsearch:9200"]
     user => "elastic"
     password => "${ELASTIC_PASSWORD}"
-    ssl => true
-    ssl_certificate_verification => false
     index => "%{[@metadata][index_prefix]}-%{+YYYY.MM.dd}"
+    template_name => "redelk"
+    template_overwrite => true
   }
-
-  # Debug output (comment out in production)
-  stdout { codec => rubydebug }
 }
 EOF
-
-    log "Logstash pipeline created "
 }
 
-# Create systemd service
 create_systemd_service() {
-    log "Creating systemd service..."
-
+    echo "[INFO] Creating systemd service..."
     cat > /etc/systemd/system/redelk.service <<EOF
 [Unit]
-Description=RedELK SIEM Stack
-Requires=docker.service
+Description=RedELK Stack
 After=docker.service
+Requires=docker.service
 
 [Service]
-Type=forking
-Restart=always
-WorkingDirectory=/opt/RedELK/elkserver/docker
-Environment="REDELK_PATH=/opt/RedELK"
-ExecStart=/usr/local/bin/docker-compose up -d
-ExecStop=/usr/local/bin/docker-compose down
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=${REDELK_PATH}/elkserver/docker
+Environment="REDELK_PATH=${REDELK_PATH}"
+Environment="ELASTIC_PASSWORD=${ELASTIC_PASSWORD}"
+Environment="ES_JAVA_OPTS=${ES_JAVA_OPTS}"
+ExecStart=${COMPOSE_CMD} up -d
+ExecStop=${COMPOSE_CMD} down
+ExecReload=${COMPOSE_CMD} restart
 StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
@@ -453,184 +429,131 @@ EOF
 
     systemctl daemon-reload
     systemctl enable redelk
-
-    log "Systemd service created "
 }
 
-# Configure firewall
-configure_firewall() {
-    log "Configuring firewall..."
+start_stack() {
+    echo "[INFO] Starting RedELK stack..."
+    cd "${REDELK_PATH}/elkserver/docker"
 
-    # Enable UFW if not already
-    if ! command -v ufw > /dev/null 2>&1; then
-        apt-get install -y ufw
-    fi
+    # Export environment variables
+    export REDELK_PATH="${REDELK_PATH}"
+    export ELASTIC_PASSWORD="${ELASTIC_PASSWORD}"
+    export ES_JAVA_OPTS="${ES_JAVA_OPTS}"
 
-    # Configure firewall rules
-    ufw --force enable
-    ufw default deny incoming
-    ufw default allow outgoing
+    # Stop any existing containers
+    $COMPOSE_CMD down 2>/dev/null || true
 
-    # Allow SSH
-    ufw allow 22/tcp comment "SSH"
-
-    # Allow RedELK services
-    ufw allow 443/tcp comment "RedELK Kibana HTTPS"
-    ufw allow 5044/tcp comment "RedELK Logstash Beats"
-
-    # Allow Docker networks
-    ufw allow in on docker0
-
-    ufw reload
-
-    log "Firewall configured "
-}
-
-# Configure system settings
-configure_system() {
-    log "Configuring system settings for Elasticsearch..."
-
-    # Set vm.max_map_count for Elasticsearch
-    sysctl -w vm.max_map_count=262144 > /dev/null 2>&1
-    echo "vm.max_map_count=262144" >> /etc/sysctl.conf
-
-    log "System settings configured"
-}
-
-# Start services
-start_services() {
-    log "Starting RedELK services..."
-
-    cd ${REDELK_PATH}/elkserver/docker
-
-    # Export for docker-compose
-    export REDELK_PATH="/opt/RedELK"
-
-    # Pull images
-    docker-compose pull
+    # Pull latest images
+    echo "[INFO] Pulling Docker images..."
+    $COMPOSE_CMD pull
 
     # Start services
-    docker-compose up -d
+    echo "[INFO] Starting services..."
+    $COMPOSE_CMD up -d
 
-    # Wait for services to be healthy
-    log "Waiting for services to be healthy..."
-    sleep 30
+    # Wait for Elasticsearch
+    echo "[INFO] Waiting for Elasticsearch to be ready..."
+    local attempts=0
+    while ! curl -fsS -u elastic:${ELASTIC_PASSWORD} http://127.0.0.1:9200/_cluster/health >/dev/null 2>&1; do
+        sleep 5
+        ((attempts++))
+        if [[ $attempts -gt 60 ]]; then
+            echo "[ERROR] Elasticsearch failed to start"
+            docker logs redelk-elasticsearch
+            exit 1
+        fi
+        echo -n "."
+    done
+    echo ""
 
-    # Check service status
-    docker-compose ps
+    # Wait for Kibana
+    echo "[INFO] Waiting for Kibana to be ready..."
+    attempts=0
+    while ! curl -fsS http://127.0.0.1:5601/api/status >/dev/null 2>&1; do
+        sleep 5
+        ((attempts++))
+        if [[ $attempts -gt 60 ]]; then
+            echo "[ERROR] Kibana failed to start"
+            docker logs redelk-kibana
+            exit 1
+        fi
+        echo -n "."
+    done
+    echo ""
 
-    log "Services started "
+    echo "[INFO] Stack started successfully"
 }
 
-# Setup Elasticsearch passwords
-setup_passwords() {
-    log "Setting up Elasticsearch passwords..."
-
-    # Wait for Elasticsearch to be fully ready
-    sleep 20
-
-    # Set kibana_system password
-    echo "KibanaRedElk2024!" | docker exec -i redelk-elasticsearch elasticsearch-reset-password -u kibana_system -b -i
-
-    # Create redelk user
-    docker exec redelk-elasticsearch elasticsearch-users useradd redelk -p redelk -r superuser 2>/dev/null || true
-
-    log "Passwords configured "
-}
-
-# Create package for remote deployments
 create_deployment_packages() {
-    log "Creating deployment packages..."
+    echo "[INFO] Creating deployment packages..."
+    cd "${REDELK_PATH}"
 
-    cd ${REDELK_PATH}
+    # C2 servers package
+    mkdir -p c2package
+    cp certs/redelkCA.crt c2package/
+    cp certs/sshkey c2package/
+    tar czf c2servers.tgz c2package
+    rm -rf c2package
 
-    # C2 Server package
-    tar czf c2servers.tgz \
-        certs/redelkCA.crt \
-        certs/sshkey \
-        scripts/getremotelogs.sh \
-        c2servers/filebeat.yml
-
-    # Redirector package
-    tar czf redirs.tgz \
-        certs/redelkCA.crt \
-        certs/elkserver.crt \
-        redirs/filebeat.yml
-
-    log "Deployment packages created "
+    # Redirectors package
+    mkdir -p redirpackage
+    cp certs/redelkCA.crt redirpackage/
+    cp certs/elkserver.crt redirpackage/
+    tar czf redirs.tgz redirpackage
+    rm -rf redirpackage
 }
 
-# Print summary
 print_summary() {
-    SERVER_IP=$(ip addr show | grep 'inet ' | grep -v '127.0.0.1' | head -1 | awk '{print $2}' | cut -d/ -f1)
+    local server_ip=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
 
     echo ""
     echo "================================================================"
-    echo "       RedELK v${REDELK_VERSION} Installation Complete!"
+    echo "       RedELK v3.0 Installation Complete!"
     echo "================================================================"
     echo ""
     echo "Access Kibana:"
-    echo "  URL: https://${SERVER_IP}/"
-    echo "  Username: redelk"
-    echo "  Password: redelk"
-    echo ""
-    echo "Elasticsearch:"
-    echo "  URL: https://${SERVER_IP}:9200"
+    echo "  URL: https://${server_ip}/"
     echo "  Username: elastic"
-    echo "  Password: RedElk2024Secure!"
+    echo "  Password: ${ELASTIC_PASSWORD}"
+    echo ""
+    echo "Elasticsearch API:"
+    echo "  URL: http://${server_ip}:9200"
+    echo "  Username: elastic"
+    echo "  Password: ${ELASTIC_PASSWORD}"
     echo ""
     echo "Deployment Packages:"
     echo "  C2 Servers: ${REDELK_PATH}/c2servers.tgz"
     echo "  Redirectors: ${REDELK_PATH}/redirs.tgz"
     echo ""
     echo "Service Management:"
-    echo "  Start: systemctl start redelk"
-    echo "  Stop: systemctl stop redelk"
-    echo "  Status: systemctl status redelk"
-    echo "  Logs: docker-compose -f ${REDELK_PATH}/elkserver/docker/docker-compose.yml logs"
+    echo "  systemctl status redelk"
+    echo "  systemctl restart redelk"
+    echo "  docker logs redelk-elasticsearch"
     echo ""
-    echo "Next Steps:"
-    echo "  1. Change default passwords immediately"
-    echo "  2. Deploy Filebeat on C2 servers using c2servers.tgz"
-    echo "  3. Deploy Filebeat on redirectors using redirs.tgz"
-    echo "  4. Import Kibana dashboards"
-    echo ""
-    echo "Installation log: ${REDELK_PATH}/logs/install.log"
+    echo "Installation log: ${LOG_FILE}"
     echo ""
 }
 
-# Main execution
 main() {
     print_banner
-
-    # Create log file
-    mkdir -p ${REDELK_PATH}/logs
-    exec > >(tee -a ${REDELK_PATH}/logs/install.log)
-    exec 2>&1
-
-    log "Starting RedELK installation on $(hostname)..."
-
+    sanitize_script
     check_root
+    print_facts
     check_ubuntu
-    update_system
+    install_dependencies
     install_docker
-    install_docker_compose
+    setup_kernel
     create_directories
     generate_certificates
-    download_redelk
+    check_ports
+    create_env_file
     create_docker_compose
     create_nginx_config
     create_logstash_pipeline
     create_systemd_service
-    configure_firewall
-    configure_system
-    start_services
-    setup_passwords
+    start_stack
     create_deployment_packages
-
     print_summary
-
-    log "Installation completed successfully!"
 }
 
 # Run main function
