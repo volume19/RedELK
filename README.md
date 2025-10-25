@@ -1,64 +1,42 @@
 # RedELK v3.0
 
-One-script deployment of RedELK SIEM for Red Teams. Track Cobalt Strike, Empire, and other C2 logs.
-
-## Deploy in 5 Minutes
-
-```bash
-# 1. Clone
-git clone https://github.com/volume19/RedELK.git
-
-# 2. Copy to Ubuntu server (20.04/22.04/24.04)
-scp RedELK/redelk_ubuntu_deploy.sh root@YOUR_SERVER:/tmp/
-
-# 3. Deploy
-ssh root@YOUR_SERVER
-bash /tmp/redelk_ubuntu_deploy.sh
-```
-
-**Done!** Access at `https://YOUR_SERVER/` • Login: `redelk` / `redelk`
-
-## What's Included
-
-- `redelk_ubuntu_deploy.sh` - Complete automated deployment
-- `ubuntu_preflight.sh` - Optional system checker
-- `README.md` - This file
+One-script deployment for RedELK SIEM on Ubuntu.
 
 ## Requirements
 
-- Ubuntu Server 20.04/22.04/24.04 LTS
-- 4+ CPU cores, 8+ GB RAM, 50+ GB disk
-- Root access & internet connection
+- Ubuntu 20.04/22.04/24.04 LTS (fresh install)
+- Root access
+- 4+ CPU, 8+ GB RAM, 50+ GB disk
 
-## The Script Installs
-
-✓ Docker & Docker Compose
-✓ Elasticsearch, Kibana, Logstash (8.11.3)
-✓ Nginx HTTPS reverse proxy
-✓ TLS certificates
-✓ Firewall rules
-✓ Systemd service
-✓ C2 & Redirector packages
-
-## After Deployment
-
-1. **Change passwords immediately**
-2. Deploy Filebeat on C2 servers: `/opt/RedELK/c2servers.tgz`
-3. Deploy Filebeat on redirectors: `/opt/RedELK/redirs.tgz`
-
-## Commands
+## Clean Install
 
 ```bash
-systemctl status redelk    # Check status
-systemctl restart redelk   # Restart
-docker logs redelk-kibana  # View logs
+# Download and run
+curl -o /tmp/install.sh https://raw.githubusercontent.com/volume19/RedELK/master/redelk_ubuntu_deploy.sh
+sudo bash /tmp/install.sh
 ```
 
-## Documentation
+## Access
 
-- [Official RedELK](https://github.com/outflanknl/RedELK)
-- [Wiki](https://github.com/outflanknl/RedELK/wiki)
+After 5 minutes:
+- URL: `https://YOUR_SERVER_IP/`
+- User: `elastic`
+- Pass: `RedElk2024Secure`
 
----
+## Cleanup (if needed)
 
-*RedELK by Outflank • Simplified deployment by volume19*
+```bash
+# Stop and remove everything
+cd /opt/RedELK/elkserver/docker 2>/dev/null && docker compose down -v
+docker rm -f $(docker ps -a | grep redelk | awk '{print $1}') 2>/dev/null
+docker network rm redelk_redelk 2>/dev/null
+sudo rm -rf /opt/RedELK
+sudo rm -f /etc/systemd/system/redelk.service
+sudo rm -f /etc/sysctl.d/99-elasticsearch.conf
+```
+
+## Files
+
+- `redelk_ubuntu_deploy.sh` - Main deployment script
+- `.env.example` - Environment template
+- `linux/99-elastic.conf` - Kernel settings
