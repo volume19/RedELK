@@ -152,7 +152,19 @@ elkserver/.env
 env.local
 *.local
 redelk-install.log
+
+# Internal development docs (not for distribution)
 VALIDATION_REPORT.md
 IMPLEMENTATION_SUMMARY.md
 COMPLETION_SUMMARY.txt
 V3_RELEASE_NOTES.md
+PACKAGING_COMPLETE.md
+CLEANUP_SUMMARY.md
+README_v3.md
+
+# Build artifacts
+packaging/build/
+packages/
+*.deb
+*.snap
+*.tar.gz

@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(chmod +x:*)",
+      "Bash(bash apply_audit_fixes.sh:*)",
+      "Bash(openssl version:*)",
+      "Bash(openssl req:*)",
+      "Bash(openssl x509:*)",
+      "Bash(ssh-keygen:*)",
+      "Bash(tar czf:*)",
+      "Bash(docker --version:*)",
+      "Bash(docker-compose:*)",
+      "Bash(docker compose:*)",
+      "Bash(awk '{print \"\"\"\"  \"\"\"\" $9 \"\"\"\" (\"\"\"\" $5 \"\"\"\")\"\"\"\"}')",
+      "Bash(awk:*)",
+      "Bash(ipconfig:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

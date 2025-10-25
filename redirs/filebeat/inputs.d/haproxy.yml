@@ -1,0 +1,53 @@
+# RedELK HAProxy Redirector Input Configuration
+#
+# This file configures Filebeat to read HAProxy redirector logs
+# Place in /etc/filebeat/inputs.d/ on HAProxy redirectors
+#
+
+- type: log
+  enabled: true
+
+  # Path to HAProxy log file
+  paths:
+    - /var/log/haproxy.log
+
+  # Prevent duplicate processing
+  scan_frequency: 5s
+  harvester_buffer_size: 16384
+  max_bytes: 10485760
+
+  # Add fields to identify this redirector
+  fields_under_root: true
+  fields:
+    infra:
+      attack_scenario: ${ATTACKSCENARIO}
+      log:
+        type: redirtraffic
+    redir:
+      program: haproxy
+      frontend:
+        name: ${FRONTEND:http-in}
+      backend:
+        name: ${BACKEND:c2-https}
+
+  # HAProxy logs often come through syslog
+  # Match syslog format
+  multiline.pattern: '^[A-Za-z]{3}\s+\d+\s\d+:\d+:\d+'
+  multiline.negate: true
+  multiline.match: after
+
+  # Exclude certain lines
+  exclude_lines: ['^#']
+
+  # Close file handlers
+  close_inactive: 5m
+  close_renamed: false
+  close_removed: true
+  close_eof: false
+
+  # Clean registry
+  clean_removed: true
+
+  # Backoff settings
+  backoff: 1s
+  max_backoff: 10s
