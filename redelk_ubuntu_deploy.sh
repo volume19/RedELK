@@ -255,7 +255,7 @@ services:
         hard: -1
     volumes:
       - esdata:/usr/share/elasticsearch/data
-      - ${REDELK_PATH}/certs:/usr/share/elasticsearch/config/certs:ro
+      - /opt/RedELK/certs:/usr/share/elasticsearch/config/certs:ro
     ports:
       - "127.0.0.1:9200:9200"
     healthcheck:
@@ -276,9 +276,9 @@ services:
       - xpack.monitoring.enabled=false
       - "LS_JAVA_OPTS=-Xmx1g -Xms1g"
     volumes:
-      - ${REDELK_PATH}/elkserver/logstash/pipelines:/usr/share/logstash/pipeline:ro
-      - ${REDELK_PATH}/elkserver/logstash/ruby-scripts:/usr/share/logstash/ruby-scripts:ro
-      - ${REDELK_PATH}/certs:/usr/share/logstash/config/certs:ro
+      - /opt/RedELK/elkserver/logstash/pipelines:/usr/share/logstash/pipeline:ro
+      - /opt/RedELK/elkserver/logstash/ruby-scripts:/usr/share/logstash/ruby-scripts:ro
+      - /opt/RedELK/certs:/usr/share/logstash/config/certs:ro
     ports:
       - "0.0.0.0:5044:5044"
     depends_on:
@@ -302,7 +302,7 @@ services:
       - SERVER_SSL_CERTIFICATE=/usr/share/kibana/config/certs/elkserver.crt
       - SERVER_SSL_KEY=/usr/share/kibana/config/certs/elkserver.key
     volumes:
-      - ${REDELK_PATH}/certs:/usr/share/kibana/config/certs:ro
+      - /opt/RedELK/certs:/usr/share/kibana/config/certs:ro
     ports:
       - "127.0.0.1:5601:5601"
     depends_on:
@@ -317,8 +317,8 @@ services:
       redelk:
         ipv4_address: 172.28.0.5
     volumes:
-      - ${REDELK_PATH}/elkserver/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ${REDELK_PATH}/certs:/etc/nginx/certs:ro
+      - /opt/RedELK/elkserver/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /opt/RedELK/certs:/etc/nginx/certs:ro
     ports:
       - "443:443"
       - "80:80"
@@ -449,7 +449,8 @@ After=docker.service
 [Service]
 Type=forking
 Restart=always
-WorkingDirectory=${REDELK_PATH}/elkserver/docker
+WorkingDirectory=/opt/RedELK/elkserver/docker
+Environment="REDELK_PATH=/opt/RedELK"
 ExecStart=/usr/local/bin/docker-compose up -d
 ExecStop=/usr/local/bin/docker-compose down
 StandardOutput=journal
@@ -498,6 +499,9 @@ start_services() {
     log "Starting RedELK services..."
 
     cd ${REDELK_PATH}/elkserver/docker
+
+    # Export for docker-compose
+    export REDELK_PATH="/opt/RedELK"
 
     # Pull images
     docker-compose pull
