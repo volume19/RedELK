@@ -230,21 +230,18 @@ create_docker_compose() {
     cat > "${REDELK_PATH}/elkserver/docker/docker-compose.yml" <<'EOF'
 services:
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.3
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
     container_name: redelk-elasticsearch
     restart: unless-stopped
     environment:
       - discovery.type=single-node
-      - bootstrap.memory_lock=true
       - xpack.security.enabled=true
       - xpack.security.http.ssl.enabled=false
       - xpack.security.authc.api_key.enabled=true
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - ES_JAVA_OPTS=${ES_JAVA_OPTS}
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
     ulimits:
-      memlock:
-        soft: -1
-        hard: -1
       nofile:
         soft: 65536
         hard: 65536
@@ -254,16 +251,16 @@ services:
     ports:
       - "127.0.0.1:9200:9200"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s | grep -q status"]
+      test: ["CMD-SHELL", "curl -fsS -u elastic:${ELASTIC_PASSWORD} 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=1s' || exit 1"]
       interval: 10s
       timeout: 10s
-      retries: 30
-      start_period: 60s
+      retries: 60
+      start_period: 90s
     networks:
       - redelk
 
   logstash:
-    image: docker.elastic.co/logstash/logstash:8.11.3
+    image: docker.elastic.co/logstash/logstash:8.15.3
     container_name: redelk-logstash
     restart: unless-stopped
     environment:
@@ -282,7 +279,7 @@ services:
       - redelk
 
   kibana:
-    image: docker.elastic.co/kibana/kibana:8.11.3
+    image: docker.elastic.co/kibana/kibana:8.15.3
     container_name: redelk-kibana
     restart: unless-stopped
     environment:
@@ -293,17 +290,18 @@ services:
       - ELASTICSEARCH_SSL_VERIFICATIONMODE=none
       - SERVER_SSL_ENABLED=false
       - TELEMETRY_ENABLED=false
+      - SERVER_PUBLICBASEURL=https://localhost
     ports:
       - "127.0.0.1:5601:5601"
     depends_on:
       elasticsearch:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:5601/api/status | grep -q available"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5601/api/status || exit 1"]
       interval: 10s
       timeout: 10s
-      retries: 30
-      start_period: 60s
+      retries: 60
+      start_period: 90s
     networks:
       - redelk
 

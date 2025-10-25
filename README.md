@@ -1,12 +1,13 @@
 # RedELK v3.0
 
-One-script deployment for RedELK SIEM on Ubuntu.
+One-script deployment for RedELK SIEM on Ubuntu. Uses ELK Stack 8.15.3 (latest).
 
 ## Requirements
 
-- Ubuntu 20.04/22.04/24.04 LTS (fresh install)
+- Ubuntu 20.04/22.04/24.04 LTS
 - Root access
 - 4+ CPU, 8+ GB RAM, 50+ GB disk
+- Internet connection
 
 ## Clean Install
 
