@@ -180,7 +180,11 @@ create_directories() {
     echo "[INFO] Creating directory structure..."
     mkdir -p "${REDELK_PATH}"/{elkserver/{docker,nginx,logstash/pipelines,kibana},certs,logs}
     mkdir -p "${REDELK_PATH}/elasticsearch-data"
+
+    # Fix permissions for Docker containers (uid 1000)
     chown -R 1000:1000 "${REDELK_PATH}/elasticsearch-data"
+    chmod 755 "${REDELK_PATH}/elkserver/logstash"
+    chmod 755 "${REDELK_PATH}/elkserver/logstash/pipelines"
 }
 
 copy_deployment_files() {
@@ -202,6 +206,7 @@ copy_deployment_files() {
     if ls "${SCRIPT_DIR}"/*.conf >/dev/null 2>&1; then
         echo "[INFO] Copying Logstash pipeline configurations..."
         cp "${SCRIPT_DIR}"/*.conf "${REDELK_PATH}/elkserver/logstash/conf.d/" 2>/dev/null || true
+        chmod 644 "${REDELK_PATH}/elkserver/logstash/conf.d/"*.conf 2>/dev/null || true
     fi
 
     for feed_file in tor-exit-nodes.txt cdn-ip-lists.txt compromised-ips.txt feodo-tracker.txt talos-reputation.txt; do
@@ -295,19 +300,30 @@ fix_permissions() {
 
     for d in \
         "${REDELK_PATH}/certs" \
+        "${REDELK_PATH}/elkserver" \
+        "${REDELK_PATH}/elkserver/docker" \
         "${REDELK_PATH}/elkserver/nginx" \
         "${REDELK_PATH}/elkserver/kibana" \
-        "${REDELK_PATH}/elkserver/logstash/pipelines"
+        "${REDELK_PATH}/elkserver/logstash" \
+        "${REDELK_PATH}/elkserver/logstash/pipelines" \
+        "${REDELK_PATH}/elkserver/logstash/conf.d" \
+        "${REDELK_PATH}/elkserver/logstash/threat-feeds"
     do
         [[ -d "$d" ]] && chmod 755 "$d"
     done
 
+    # Fix file permissions for Docker containers to read
     find "${REDELK_PATH}/elkserver" -type f -name '*.yml' -exec chmod 644 {} + 2>/dev/null || true
     find "${REDELK_PATH}/elkserver" -type f -name '*.conf' -exec chmod 644 {} + 2>/dev/null || true
     find "${REDELK_PATH}/elkserver" -type f -name '*.json' -exec chmod 644 {} + 2>/dev/null || true
+    find "${REDELK_PATH}/elkserver" -type f -name '.env' -exec chmod 644 {} + 2>/dev/null || true
     find "${REDELK_PATH}/certs" -type f -name '*.crt' -exec chmod 644 {} + 2>/dev/null || true
-    chmod 600 "${REDELK_PATH}/certs/elkserver.key" "${REDELK_PATH}/certs/redelkCA.key" 2>/dev/null || true
 
+    # Keep private keys secure
+    chmod 600 "${REDELK_PATH}/certs/elkserver.key" "${REDELK_PATH}/certs/redelkCA.key" 2>/dev/null || true
+    chmod 600 "${REDELK_PATH}/certs/sshkey" 2>/dev/null || true
+
+    # Elasticsearch data directory needs to be owned by uid 1000
     chown -R 1000:1000 "${REDELK_PATH}/elasticsearch-data"
 
     echo "[INFO] Permissions fixed for uid 1000 (elasticsearch user)"
@@ -321,6 +337,7 @@ ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
 ES_JAVA_OPTS=${ES_JAVA_OPTS}
 COMPOSE_PROJECT_NAME=redelk
 EOF
+    chmod 644 "${REDELK_PATH}/elkserver/docker/.env"
 }
 
 create_docker_compose() {
@@ -365,18 +382,18 @@ services:
     environment:
       - xpack.monitoring.enabled=false
       - LS_JAVA_OPTS=-Xmx1g -Xms1g
-      - LS_ES_API_KEY=${LS_ES_API_KEY}
     volumes:
       - ${REDELK_PATH}/elkserver/logstash/pipelines:/usr/share/logstash/pipeline:ro
     ports:
       - "0.0.0.0:5044:5044"
+      - "127.0.0.1:9600:9600"
     depends_on:
       elasticsearch:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:9600/?pretty | grep -q '\"status\".*:.*\"green\"' || exit 1"]
-      interval: 15s
-      timeout: 10s
+      test: ["CMD-SHELL", "netstat -tln | grep -q ':5044' || ss -tln | grep -q ':5044' || exit 1"]
+      interval: 10s
+      timeout: 5s
       retries: 40
       start_period: 60s
     networks: [redelk]
@@ -419,6 +436,7 @@ networks:
   redelk:
     driver: bridge
 EOF
+    chmod 644 "${REDELK_PATH}/elkserver/docker/docker-compose.yml"
 }
 
 create_nginx_config() {
@@ -459,6 +477,9 @@ http {
   }
 }
 EOF
+
+    # Fix permissions so Nginx container can read it
+    chmod 644 "${REDELK_PATH}/elkserver/nginx/nginx.conf"
 }
 
 create_logstash_pipeline() {
@@ -489,12 +510,16 @@ filter {
 output {
   elasticsearch {
     hosts    => ["http://elasticsearch:9200"]
-    api_key  => "${LS_ES_API_KEY}"
+    user     => "elastic"
+    password => "RedElk2024Secure"
     index    => "%{[@metadata][index_prefix]}-%{+YYYY.MM.dd}"
     template_overwrite => true
   }
 }
 EOF
+
+    # Fix permissions so Logstash container (uid 1000) can read it
+    chmod 644 "${REDELK_PATH}/elkserver/logstash/pipelines/main.conf"
 }
 
 provision_logstash_api_key() {
@@ -639,10 +664,10 @@ start_stack() {
     echo "[INFO] Starting Elasticsearch..."
     $COMPOSE_CMD up -d elasticsearch
 
-    echo -n "[INFO] Waiting for Elasticsearch to be ready"
+    echo -n "[INFO] Waiting for Elasticsearch to be ready (this may take 3-6 minutes)"
     local code
     local ok=false
-    for ((i=1;i<=60;i++)); do
+    for ((i=1;i<=120;i++)); do
         code="$(curl -sS -u "elastic:${ELASTIC_PASSWORD}" -o /dev/null -w '%{http_code}' http://127.0.0.1:9200/_cluster/health || true)"
         if [[ "$code" == "200" ]]; then ok=true; break; fi
         sleep 3; echo -n "."
@@ -659,22 +684,47 @@ start_stack() {
 
     echo "[INFO] Elasticsearch is healthy"
 
-    provision_logstash_api_key
+    # No longer using API key authentication - using basic auth instead
+    # provision_logstash_api_key
     provision_kibana_service_token
 
     echo ""
     echo "[INFO] Starting Logstash..."
     $COMPOSE_CMD up -d logstash
-    sleep 5
-    echo "[INFO] Logstash started"
+
+    # Give Logstash initial time to start JVM
+    sleep 10
+
+    echo -n "[INFO] Waiting for Logstash to be ready (checking logs for port 5044)"
+    ok=false
+    for ((i=1;i<=120;i++)); do
+        # Check container logs for the actual "Starting server on port: 5044" message
+        if docker logs redelk-logstash 2>&1 | grep -q "Starting server on port: 5044"; then
+            ok=true
+            break
+        fi
+        sleep 3; echo -n "."
+    done
+    echo " ✓"
+
+    if [[ "$ok" != "true" ]]; then
+        echo ""
+        echo "[ERROR] Logstash failed to start within 2 minutes"
+        echo "[ERROR] Did not see 'Starting server on port: 5044' in logs"
+        echo "[ERROR] Container logs:"
+        docker logs redelk-logstash 2>&1 | tail -50
+        exit 1
+    fi
+
+    echo "[INFO] Logstash is healthy and ready to receive data on port 5044"
 
     echo ""
     echo "[INFO] Starting Kibana..."
     $COMPOSE_CMD up -d kibana
 
-    echo -n "[INFO] Waiting for Kibana to be ready"
+    echo -n "[INFO] Waiting for Kibana to be ready (this may take 5-10 minutes on first boot)"
     ok=false
-    for ((i=1;i<=80;i++)); do
+    for ((i=1;i<=120;i++)); do
         if curl -sS http://127.0.0.1:5601/api/status 2>/dev/null | grep -q '"level":"available"'; then
             ok=true
             break
@@ -685,14 +735,16 @@ start_stack() {
 
     if [[ "$ok" != "true" ]]; then
         echo ""
-        echo "[WARN] Kibana may not be fully ready"
-        echo "[WARN] Last 50 lines of logs:"
+        echo "[ERROR] Kibana failed to start within 10 minutes"
+        echo "[ERROR] Last 50 lines of logs:"
         docker logs --tail=50 redelk-kibana || true
         echo ""
-        echo "[INFO] Continuing anyway - Kibana may still be initializing"
-    else
-        echo "[INFO] Kibana is ready"
+        echo "[ERROR] This usually indicates insufficient resources or container issues"
+        echo "[ERROR] Check: docker logs redelk-kibana"
+        exit 1
     fi
+
+    echo "[INFO] Kibana is ready and healthy"
 
     echo ""
     echo "[INFO] Starting Nginx..."
@@ -733,13 +785,17 @@ deploy_elasticsearch_templates() {
 deploy_logstash_configs() {
     echo "[INFO] Deploying Logstash pipeline configurations..."
     mkdir -p "${REDELK_PATH}/elkserver/logstash/pipelines"
+    chmod 755 "${REDELK_PATH}/elkserver/logstash/pipelines"
 
     if ls "${REDELK_PATH}/elkserver/logstash/conf.d/"*.conf >/dev/null 2>&1; then
         cp "${REDELK_PATH}/elkserver/logstash/conf.d/"*.conf "${REDELK_PATH}/elkserver/logstash/pipelines/" || true
+        # Fix permissions so Logstash container (uid 1000) can read configs
+        chmod 644 "${REDELK_PATH}/elkserver/logstash/pipelines/"*.conf 2>/dev/null || true
         echo "[INFO] Logstash pipeline configurations deployed"
     fi
 
     mkdir -p "${REDELK_PATH}/elkserver/logstash/threat-feeds"
+    chmod 755 "${REDELK_PATH}/elkserver/logstash/threat-feeds"
 }
 
 deploy_kibana_dashboards() {
@@ -747,10 +803,12 @@ deploy_kibana_dashboards() {
 
     local kb_ready=false
     echo "[INFO] Waiting for Kibana API to be ready..."
-    for ((i=1;i<=30;i++)); do
+    echo "[INFO] This may take 2-3 minutes on first boot..."
+    for ((i=1;i<=90;i++)); do
         if curl -sS "http://127.0.0.1:5601/api/status" \
                -u "elastic:${ELASTIC_PASSWORD}" 2>/dev/null | grep -q '"level":"available"'; then
             kb_ready=true
+            echo ""
             echo "[INFO] Kibana API is ready"
             break
         fi
@@ -780,13 +838,21 @@ deploy_kibana_dashboards() {
                 -H "kbn-xsrf: true" \
                 -F "file=@${REDELK_PATH}/elkserver/kibana/dashboards/redelk-main-dashboard.ndjson" 2>&1)
 
-            if echo "$import_response" | grep -q '"success":true'; then
-                echo "[INFO] Successfully imported Kibana dashboards"
+            if echo "$import_response" | grep -q '"success":true' || echo "$import_response" | grep -q '"successCount"'; then
+                echo "[INFO] Successfully imported Kibana dashboards!"
+                local success_count=$(echo "$import_response" | jq -r '.successCount // .success' 2>/dev/null || echo "")
+                [[ -n "$success_count" && "$success_count" != "null" ]] && echo "[INFO] Imported $success_count objects"
                 echo "[INFO] Dashboard URL: https://$(hostname -I | awk '{print $1}')/app/dashboards"
             else
-                echo "[WARN] Dashboard import may have issues. Response:"
+                echo ""
+                echo "[ERROR] Dashboard import FAILED!"
+                echo "[ERROR] Response from Kibana:"
                 echo "$import_response" | jq '.' 2>/dev/null || echo "$import_response"
-                echo "[INFO] You may need to manually import dashboards from Kibana UI"
+                echo ""
+                echo "[ERROR] This is a critical failure - dashboards are the main feature of RedELK"
+                echo "[ERROR] Check /var/log/redelk_deploy.log for full output"
+                echo "[ERROR] You can retry dashboard import with: sudo bash /tmp/fix-dashboards.sh"
+                exit 1
             fi
         else
             echo "[WARN] Dashboard file not found at: ${REDELK_PATH}/elkserver/kibana/dashboards/redelk-main-dashboard.ndjson"
@@ -882,11 +948,23 @@ filebeat.inputs:
   enabled: true
   paths:
     - /opt/cobaltstrike/logs/*/beacon_*.log
+    - /opt/cobaltstrike/server/logs/*/beacon_*.log
+    - /home/*/cobaltstrike/*/server/logs/*/beacon_*.log
     - /opt/cobaltstrike/logs/*/events.log
+    - /opt/cobaltstrike/server/logs/*/events.log
+    - /home/*/cobaltstrike/*/server/logs/*/events.log
     - /opt/cobaltstrike/logs/*/weblog.log
+    - /opt/cobaltstrike/server/logs/*/weblog.log
+    - /home/*/cobaltstrike/*/server/logs/*/weblog.log
     - /opt/cobaltstrike/logs/*/downloads.log
+    - /opt/cobaltstrike/server/logs/*/downloads.log
+    - /home/*/cobaltstrike/*/server/logs/*/downloads.log
     - /opt/cobaltstrike/logs/*/keystrokes.log
+    - /opt/cobaltstrike/server/logs/*/keystrokes.log
+    - /home/*/cobaltstrike/*/server/logs/*/keystrokes.log
     - /opt/cobaltstrike/logs/*/screenshots.log
+    - /opt/cobaltstrike/server/logs/*/screenshots.log
+    - /home/*/cobaltstrike/*/server/logs/*/screenshots.log
   fields:
     logtype: rtops
     c2_program: cobaltstrike
@@ -951,17 +1029,32 @@ FBEOF
 #!/bin/bash
 echo "Deploying RedELK filebeat agent for C2 server..."
 
+# Clean up previous installation
+echo "[INFO] Cleaning up previous Filebeat installation..."
+systemctl stop filebeat 2>/dev/null || true
+systemctl disable filebeat 2>/dev/null || true
+
+# Backup and remove old config
+if [[ -f /etc/filebeat/filebeat.yml ]]; then
+    cp /etc/filebeat/filebeat.yml /etc/filebeat/filebeat.yml.backup.$(date +%s) 2>/dev/null || true
+fi
+
+# Remove old data and registry
+rm -rf /var/lib/filebeat/registry 2>/dev/null || true
+rm -rf /var/log/filebeat/* 2>/dev/null || true
+
+# Install or update Filebeat
 ARCH="$(dpkg --print-architecture)"
 DEB="filebeat-8.15.3-${ARCH}.deb"
 
 if ! command -v filebeat &>/dev/null; then
+    echo "[INFO] Installing Filebeat..."
     curl -fL -O "https://artifacts.elastic.co/downloads/beats/filebeat/${DEB}"
     dpkg -i "${DEB}" || apt-get -y -qq install "./${DEB}"
     rm -f "${DEB}"
+else
+    echo "[INFO] Filebeat already installed"
 fi
-
-systemctl stop filebeat 2>/dev/null || true
-[[ -f /etc/filebeat/filebeat.yml ]] && cp /etc/filebeat/filebeat.yml /etc/filebeat/filebeat.yml.backup.$(date +%s)
 
 cp filebeat/filebeat-cobaltstrike.yml /etc/filebeat/filebeat.yml
 
@@ -1109,17 +1202,32 @@ FBEOF
 #!/bin/bash
 echo "Deploying RedELK filebeat agent for redirector..."
 
+# Clean up previous installation
+echo "[INFO] Cleaning up previous Filebeat installation..."
+systemctl stop filebeat 2>/dev/null || true
+systemctl disable filebeat 2>/dev/null || true
+
+# Backup and remove old config
+if [[ -f /etc/filebeat/filebeat.yml ]]; then
+    cp /etc/filebeat/filebeat.yml /etc/filebeat/filebeat.yml.backup.$(date +%s) 2>/dev/null || true
+fi
+
+# Remove old data and registry
+rm -rf /var/lib/filebeat/registry 2>/dev/null || true
+rm -rf /var/log/filebeat/* 2>/dev/null || true
+
+# Install or update Filebeat
 ARCH="$(dpkg --print-architecture)"
 DEB="filebeat-8.15.3-${ARCH}.deb"
 
 if ! command -v filebeat &>/dev/null; then
+    echo "[INFO] Installing Filebeat..."
     curl -fL -O "https://artifacts.elastic.co/downloads/beats/filebeat/${DEB}"
     dpkg -i "${DEB}" || apt-get -y -qq install "./${DEB}"
     rm -f "${DEB}"
+else
+    echo "[INFO] Filebeat already installed"
 fi
-
-systemctl stop filebeat 2>/dev/null || true
-[[ -f /etc/filebeat/filebeat.yml ]] && cp /etc/filebeat/filebeat.yml /etc/filebeat/filebeat.yml.backup.$(date +%s)
 
 cp filebeat/filebeat-nginx.yml /etc/filebeat/filebeat.yml
 
@@ -1288,6 +1396,7 @@ main() {
     create_nginx_config
     create_logstash_pipeline
     deploy_logstash_configs
+    fix_permissions  # Fix permissions again after all config files are created
     create_systemd_service
     open_firewall
     start_stack

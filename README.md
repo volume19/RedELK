@@ -23,33 +23,32 @@ A comprehensive Red Team SIEM platform built on the Elastic Stack (Elasticsearch
 
 ## 🔧 Quick Installation
 
-### Option 1: Diagnostic Deployment (Recommended for Testing)
-```bash
-# For quick testing or troubleshooting
-wget https://raw.githubusercontent.com/volume19/RedELK/master/DIAGNOSE-AND-FIX.sh
-sudo bash DIAGNOSE-AND-FIX.sh
-```
-**Best for**: Quick testing, troubleshooting, development environments
+See **[DEPLOY.md](DEPLOY.md)** for complete deployment instructions.
 
-### Option 2: Full Production Deployment
+### Standard Deployment
 ```bash
-# Clone repository
-git clone https://github.com/volume19/RedELK.git
-cd RedELK
+# Copy bundle to your RedELK server
+scp redelk-v3-deployment.tar.gz root@YOUR_SERVER:/tmp/
 
-# Use the full deployment script
+# On the server
+cd /tmp
+tar xzf redelk-v3-deployment.tar.gz
+cd DEPLOYMENT-BUNDLE
 sudo bash redelk_ubuntu_deploy.sh
 ```
-**Best for**: Production deployments with full features and monitoring
 
-### Option 3: Build Deployment Bundle
+### Build from Source
 ```bash
-# Clone and create deployment bundle
-git clone https://github.com/volume19/RedELK.git
+# Clone repository
+git clone https://github.com/outflanknl/RedELK.git
 cd RedELK
-./create-bundle.sh  # Creates redelk-v3-deployment.tar.gz
+
+# Build deployment bundle
+bash create-bundle.sh
+
+# Deploy to server
+scp redelk-v3-deployment.tar.gz root@YOUR_SERVER:/tmp/
 ```
-**Best for**: Offline deployments or distributing to multiple servers
 
 ## 🎯 Post-Installation
 
@@ -72,31 +71,35 @@ sudo /opt/RedELK/scripts/test-data-generator.sh
 
 ## 📁 What's Included
 
-- **Deployment Scripts**:
-  - `DIAGNOSE-AND-FIX.sh` - Fast diagnostic deployment with all production fixes
-  - `redelk_ubuntu_deploy.sh` - Full production deployment with complete feature set
-  - `create-bundle.sh` - Bundle generator for offline deployments
-- **C2 Parsers**: Cobalt Strike, PoshC2
+- **Deployment Bundle**: `redelk-v3-deployment.tar.gz` - Complete deployment package
+- **Build Script**: `create-bundle.sh` - Rebuild bundle from source
+- **Dashboard Fix**: `fix-dashboards.sh` - Retry dashboard import if needed
+- **C2 Parsers**: Cobalt Strike, PoshC2, Sliver
 - **Redirector Parsers**: Apache, Nginx, HAProxy
 - **Detection Rules**: Sandbox, TOR, VPN, Scanner detection
 - **Enrichment**: GeoIP, CDN detection, User Agent analysis
 - **Helper Scripts**: Health check, beacon manager, threat feed updater
 - **Dashboards**: Pre-built Kibana visualizations
 
-## ✨ Recent Improvements (v3.0.1)
+## ✨ What's New in v3.0.1 (2025-10-26)
 
-The `DIAGNOSE-AND-FIX.sh` script includes all production-ready fixes:
+Production-hardened release with critical fixes for reliability:
 
-1. **Kibana Service Account Token** - Uses proper authentication instead of elastic user
-2. **Kibana Health Checks** - Real health-gating prevents 502 errors
-3. **Logstash Pipeline Syntax** - Fixed configuration format for proper startup
-4. **Nginx Dependency Fix** - Allows Nginx to start while Kibana initializes
-5. **Nginx Configuration** - Clean, validated config with proper proxy settings
-6. **Bind-Mount ES Data** - Uses deterministic paths for easier management
-7. **Readiness Checks** - Replaces fixed sleeps with real service checks
-8. **Token Management** - Avoids 409 conflicts with unnamed tokens
-9. **File Permissions** - Ensures Kibana can read its configuration
-10. **ES Prerequisites** - Maintains proper vm.max_map_count and heap settings
+### Critical Fixes
+1. **Hardcoded Logstash Auth** - Eliminates environment variable resolution issues (was causing crash-loop)
+2. **Logstash Healthcheck** - Checks container logs instead of unavailable API port (was exiting prematurely)
+3. **Extended Timeouts** - 6min ES / 6min Logstash / 10min Kibana (works on slow hardware)
+4. **Dashboard Import** - Automatic import with fail-fast error handling (prevents silent failures)
+5. **Filebeat Cleanup** - Deployment scripts clean up previous installations
+6. **Flexible CS Paths** - Supports multiple Cobalt Strike installation locations
+
+### Platform Support
+7. **Ubuntu 24.04 LTS** - Full compatibility with latest Ubuntu
+8. **Elastic Stack 8.15.3** - Latest stable Elastic components
+9. **Comprehensive Logging** - Detailed logs at /var/log/redelk_deploy.log
+10. **Tested** - Verified on fast and slow hardware
+
+See [CHANGELOG.md](CHANGELOG.md) for complete details.
 
 ## 🛡️ Security
 

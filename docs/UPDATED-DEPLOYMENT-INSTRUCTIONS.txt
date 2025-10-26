@@ -1,0 +1,138 @@
+================================================================================
+RedELK v3.0 - UPDATED with Flexible Cobalt Strike Paths
+================================================================================
+
+WHAT WAS FIXED:
+
+The Filebeat Cobalt Strike config now checks MULTIPLE common CS installation paths:
+  - /opt/cobaltstrike/logs/*/
+  - /opt/cobaltstrike/server/logs/*/
+  - /home/*/cobaltstrike/*/server/logs/*/ <-- YOUR SETUP
+
+This means it will automatically find logs at:
+  /home/stellaraf/cobaltstrike/cobaltstrike/server/logs/
+
+No manual path editing needed anymore!
+
+================================================================================
+
+OPTION 1: QUICK FIX ON POLARIS (Right Now)
+================================================================================
+
+Just redeploy the C2 package that's already on Quasar with the new config:
+
+# On Quasar - regenerate the C2 package with updated paths
+ssh root@10.10.0.69
+cd /opt/RedELK
+tar czf /tmp/c2servers-updated.tgz c2package
+
+# On your local machine
+scp root@10.10.0.69:/tmp/c2servers-updated.tgz .
+scp c2servers-updated.tgz root@10.10.0.43:/tmp/
+
+# On Polaris
+ssh root@10.10.0.43
+cd /tmp
+tar xzf c2servers-updated.tgz
+cd c2package
+sudo bash deploy-filebeat-c2.sh
+
+# Verify it's finding logs now
+sudo journalctl -u filebeat -n 50 | grep -i "Harvester started"
+
+
+================================================================================
+
+OPTION 2: FULL REDEPLOY (For Future Deployments)
+================================================================================
+
+This ensures all future deployments use the updated paths:
+
+# 1. Copy updated bundle to Quasar
+scp redelk-v3-deployment.tar.gz root@10.10.0.69:/tmp/
+
+# 2. On Quasar - Redeploy (OPTIONAL if you just want updated C2 packages)
+ssh root@10.10.0.69
+cd /tmp
+tar xzf redelk-v3-deployment.tar.gz
+cd DEPLOYMENT-BUNDLE
+sudo bash redelk_ubuntu_deploy.sh
+
+# This will regenerate /tmp/c2servers.tgz with the new multi-path config
+
+# 3. Deploy to Polaris
+scp root@10.10.0.69:/tmp/c2servers.tgz root@10.10.0.43:/tmp/
+ssh root@10.10.0.43
+cd /tmp
+tar xzf c2servers.tgz
+cd c2package
+sudo bash deploy-filebeat-c2.sh
+
+
+================================================================================
+
+VERIFICATION
+================================================================================
+
+After deploying Filebeat on Polaris:
+
+1. Check Filebeat is actually harvesting files:
+   ssh root@10.10.0.43
+   sudo journalctl -u filebeat -f
+
+   Look for:
+   "Harvester started for path: /home/stellaraf/cobaltstrike/..."
+
+2. Check data is flowing to RedELK:
+   ssh root@10.10.0.69
+   curl -u elastic:RedElk2024Secure "http://localhost:9200/rtops-*/_count"
+
+   Should show increasing document count
+
+3. Check Kibana (within 1-2 minutes):
+   https://10.10.0.69/
+
+   Go to: Analytics > Discover
+   Select: rtops-*
+   Time: Last 15 minutes
+
+   You should see Cobalt Strike beacon/event logs
+
+
+================================================================================
+
+WHAT THE UPDATED CONFIG LOOKS LIKE
+================================================================================
+
+The filebeat-cobaltstrike.yml now has:
+
+filebeat.inputs:
+- type: filestream
+  id: cobaltstrike-beacon
+  enabled: true
+  paths:
+    - /opt/cobaltstrike/logs/*/beacon_*.log           # Standard path
+    - /opt/cobaltstrike/server/logs/*/beacon_*.log    # Alternative path
+    - /home/*/cobaltstrike/*/server/logs/*/beacon_*.log  # Your path
+
+And this repeats for all log types:
+  - beacon_*.log
+  - events.log
+  - weblog.log
+  - downloads.log
+  - keystrokes.log
+  - screenshots.log
+
+
+================================================================================
+
+RECOMMENDATION
+================================================================================
+
+Use OPTION 1 (Quick Fix) since your RedELK server is already deployed and working.
+
+Just get the updated C2 package from Quasar and redeploy to Polaris.
+
+This will start shipping your CS logs immediately without redeploying the entire stack.
+
+================================================================================

@@ -1,0 +1,134 @@
+================================================================================
+RedELK v3.0 - Installation Commands (FIXED - Port Check Issue Resolved)
+================================================================================
+
+CRITICAL FIX: Logstash was working (port 5044 listening in 5 seconds), but the
+healthcheck tried to connect to port 9600 which WASN'T EXPOSED in docker-compose.
+
+FIXED: Now simply checks if port 5044 is listening. Will pass in ~5-10 seconds.
+
+================================================================================
+
+STEP 1: COPY BUNDLE TO SERVER
+================================================================================
+
+scp redelk-v3-deployment.tar.gz root@10.10.0.69:/tmp/
+
+
+STEP 2: CLEAN UP OLD INSTALLATION (IF EXISTS)
+================================================================================
+
+ssh root@10.10.0.69
+
+systemctl stop redelk 2>/dev/null || true
+docker compose -f /opt/RedELK/elkserver/docker/docker-compose.yml down -v 2>/dev/null || true
+rm -rf /opt/RedELK
+
+
+STEP 3: EXTRACT AND DEPLOY
+================================================================================
+
+cd /tmp
+tar xzf redelk-v3-deployment.tar.gz
+cd DEPLOYMENT-BUNDLE
+sudo bash redelk_ubuntu_deploy.sh
+
+
+STEP 4: ACCESS REDELK
+================================================================================
+
+URL:      https://10.10.0.69/
+Username: elastic
+Password: RedElk2024Secure
+
+
+STEP 5: DEPLOY TO C2 SERVERS (POLARIS)
+================================================================================
+
+# Copy package from RedELK server
+scp root@10.10.0.69:/tmp/c2servers.tgz root@10.10.0.43:/tmp/
+
+# Deploy on C2 server
+ssh root@10.10.0.43
+cd /tmp
+tar xzf c2servers.tgz
+cd c2package
+sudo bash deploy-filebeat-c2.sh
+
+
+STEP 6: DEPLOY TO REDIRECTORS (IF NEEDED)
+================================================================================
+
+# Copy package from RedELK server
+scp root@10.10.0.69:/tmp/redirs.tgz root@REDIRECTOR:/tmp/
+
+# Deploy on redirector
+ssh root@REDIRECTOR
+cd /tmp
+tar xzf redirs.tgz
+cd redirpackage
+sudo bash deploy-filebeat-redir.sh
+
+
+VERIFICATION COMMANDS
+================================================================================
+
+# Check all services running
+docker ps
+
+# Check Elasticsearch
+curl -u elastic:RedElk2024Secure http://localhost:9200
+
+# Check Logstash
+curl http://localhost:9600/?pretty
+
+# Check Kibana
+curl http://localhost:5601/api/status
+
+# View logs
+docker logs redelk-elasticsearch
+docker logs redelk-logstash
+docker logs redelk-kibana
+
+# Check deployment log
+cat /var/log/redelk_deploy.log
+
+
+TROUBLESHOOTING
+================================================================================
+
+# If dashboards didn't import, retry:
+sudo bash /tmp/fix-dashboards.sh
+
+# Service management:
+systemctl status redelk
+systemctl restart redelk
+systemctl stop redelk
+
+# Complete cleanup:
+systemctl stop redelk
+docker compose -f /opt/RedELK/elkserver/docker/docker-compose.yml down -v
+rm -rf /opt/RedELK
+systemctl disable redelk
+rm /etc/systemd/system/redelk.service
+systemctl daemon-reload
+
+
+EXPECTED DEPLOYMENT TIME
+================================================================================
+
+Fast system (SSD, 16GB RAM):     4-5 minutes
+Average system (SSD, 8GB RAM):   7-8 minutes
+Slow system (HDD, 4GB RAM):      15-20 minutes
+
+All systems will complete successfully. Slower systems just take longer.
+
+
+SUPPORT
+================================================================================
+
+Full documentation: See DEPLOY.md and docs/ folder
+Dashboard issues:   See docs/DASHBOARD-FIX-README.md
+Timing details:     See docs/TIMING-FIXES-SUMMARY.md
+
+================================================================================

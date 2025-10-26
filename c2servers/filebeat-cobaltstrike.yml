@@ -8,6 +8,8 @@ filebeat.inputs:
   enabled: true
   paths:
     - /opt/cobaltstrike/logs/*/beacon_*.log
+    - /opt/cobaltstrike/server/logs/*/beacon_*.log
+    - /home/*/cobaltstrike/*/server/logs/*/beacon_*.log
   exclude_files: ['\.gz$']
   fields:
     logtype: rtops
@@ -27,6 +29,8 @@ filebeat.inputs:
   enabled: true
   paths:
     - /opt/cobaltstrike/logs/*/events.log
+    - /opt/cobaltstrike/server/logs/*/events.log
+    - /home/*/cobaltstrike/*/server/logs/*/events.log
   exclude_files: ['\.gz$']
   fields:
     logtype: rtops
@@ -41,6 +45,8 @@ filebeat.inputs:
   enabled: true
   paths:
     - /opt/cobaltstrike/logs/*/weblog.log
+    - /opt/cobaltstrike/server/logs/*/weblog.log
+    - /home/*/cobaltstrike/*/server/logs/*/weblog.log
   exclude_files: ['\.gz$']
   fields:
     logtype: rtops
@@ -55,6 +61,8 @@ filebeat.inputs:
   enabled: true
   paths:
     - /opt/cobaltstrike/logs/*/downloads.log
+    - /opt/cobaltstrike/server/logs/*/downloads.log
+    - /home/*/cobaltstrike/*/server/logs/*/downloads.log
   exclude_files: ['\.gz$']
   fields:
     logtype: rtops
@@ -69,6 +77,8 @@ filebeat.inputs:
   enabled: true
   paths:
     - /opt/cobaltstrike/logs/*/keystrokes.log
+    - /opt/cobaltstrike/server/logs/*/keystrokes.log
+    - /home/*/cobaltstrike/*/server/logs/*/keystrokes.log
   exclude_files: ['\.gz$']
   fields:
     logtype: rtops
@@ -83,6 +93,8 @@ filebeat.inputs:
   enabled: true
   paths:
     - /opt/cobaltstrike/logs/*/screenshots.log
+    - /opt/cobaltstrike/server/logs/*/screenshots.log
+    - /home/*/cobaltstrike/*/server/logs/*/screenshots.log
   exclude_files: ['\.gz$']
   fields:
     logtype: rtops

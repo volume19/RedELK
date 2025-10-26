@@ -31,7 +31,11 @@
       "Bash(dos2unix:*)",
       "Bash(for f in */*.FIXED)",
       "Bash(do cp \"$f\" \"$f%.FIXED\")",
-      "Bash(done)"
+      "Bash(done)",
+      "Read(//d/**)",
+      "Bash(docker inspect:*)",
+      "Bash(ssh:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []

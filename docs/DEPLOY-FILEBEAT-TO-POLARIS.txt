@@ -1,0 +1,98 @@
+================================================================================
+Deploy Filebeat to Polaris (C2 Server) - Get Data Flowing to RedELK
+================================================================================
+
+STEP 1: COPY C2 PACKAGE FROM QUASAR TO POLARIS
+================================================================================
+
+# On your local machine, get the package from Quasar
+scp root@10.10.0.69:/tmp/c2servers.tgz .
+
+# Copy to Polaris
+scp c2servers.tgz root@10.10.0.43:/tmp/
+
+
+STEP 2: DEPLOY FILEBEAT ON POLARIS
+================================================================================
+
+# SSH to Polaris
+ssh root@10.10.0.43
+
+# Extract package
+cd /tmp
+tar xzf c2servers.tgz
+cd c2package
+
+# Check what's in the package
+ls -la
+
+# Deploy Filebeat
+sudo bash deploy-filebeat-c2.sh
+
+
+STEP 3: VERIFY FILEBEAT IS RUNNING
+================================================================================
+
+# Check Filebeat service
+systemctl status filebeat
+
+# Test connection to Logstash
+filebeat test output
+
+# Check logs
+journalctl -u filebeat -f
+
+
+STEP 4: VERIFY DATA IN KIBANA
+================================================================================
+
+# On your local machine, open browser:
+https://10.10.0.69/
+
+# Login:
+Username: elastic
+Password: RedElk2024Secure
+
+# Go to: Analytics → Dashboards → RedELK Main Overview
+
+# If still empty, check:
+# 1. Go to Analytics → Discover
+# 2. Select index pattern: rtops-*
+# 3. Set time range to "Last 15 minutes"
+# 4. You should see Filebeat events
+
+
+TROUBLESHOOTING
+================================================================================
+
+If no data shows up:
+
+1. Check Filebeat is sending:
+   journalctl -u filebeat -n 100 | grep -i error
+
+2. Check Logstash is receiving:
+   ssh root@10.10.0.69
+   docker logs redelk-logstash --tail=100 | grep -i "beats"
+
+3. Check Elasticsearch has indices:
+   curl -u elastic:RedElk2024Secure http://10.10.0.69:9200/_cat/indices?v
+
+4. Verify Polaris can reach Quasar port 5044:
+   telnet 10.10.0.69 5044
+   # or
+   nc -zv 10.10.0.69 5044
+
+
+EXPECTED RESULT
+================================================================================
+
+After deploying Filebeat to Polaris, within 1-2 minutes you should see:
+
+- Beacon status data in dashboards
+- C2 traffic logs
+- Operator command history
+- Geographic traffic sources
+
+The dashboards will populate as Filebeat sends C2 logs to RedELK.
+
+================================================================================
