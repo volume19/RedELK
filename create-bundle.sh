@@ -11,27 +11,61 @@ mkdir -p "$BUNDLE_DIR"
 # Copy all required files
 echo "Copying files..."
 
-# Main deployment script
-cp redelk_ubuntu_deploy.sh "$BUNDLE_DIR/" 2>/dev/null
+# Main deployment script (REQUIRED)
+if [[ -f "redelk_ubuntu_deploy.sh" ]]; then
+    cp redelk_ubuntu_deploy.sh "$BUNDLE_DIR/"
+    echo "  ✓ Deployment script"
+else
+    echo "  ✗ Missing redelk_ubuntu_deploy.sh"
+fi
 
 # Elasticsearch templates
-cp elkserver/elasticsearch/index-templates/*.json "$BUNDLE_DIR/" 2>/dev/null
+if ls elkserver/elasticsearch/index-templates/*.json >/dev/null 2>&1; then
+    cp elkserver/elasticsearch/index-templates/*.json "$BUNDLE_DIR/" 2>/dev/null
+    echo "  ✓ Elasticsearch templates"
+fi
 
 # Logstash configs
-cp elkserver/logstash/conf.d/*.conf "$BUNDLE_DIR/" 2>/dev/null
+if ls elkserver/logstash/conf.d/*.conf >/dev/null 2>&1; then
+    cp elkserver/logstash/conf.d/*.conf "$BUNDLE_DIR/" 2>/dev/null
+    echo "  ✓ Logstash configs"
+fi
 
 # Threat feeds
-cp elkserver/logstash/threat-feeds/*.txt "$BUNDLE_DIR/" 2>/dev/null
+if ls elkserver/logstash/threat-feeds/*.txt >/dev/null 2>&1; then
+    cp elkserver/logstash/threat-feeds/*.txt "$BUNDLE_DIR/" 2>/dev/null
+    echo "  ✓ Threat feeds"
+fi
 
 # Kibana dashboards
-cp elkserver/kibana/dashboards/*.ndjson "$BUNDLE_DIR/" 2>/dev/null
+if ls elkserver/kibana/dashboards/*.ndjson >/dev/null 2>&1; then
+    cp elkserver/kibana/dashboards/*.ndjson "$BUNDLE_DIR/" 2>/dev/null
+    echo "  ✓ Kibana dashboards"
+fi
 
 # Helper scripts
-cp scripts/*.sh "$BUNDLE_DIR/" 2>/dev/null
+if ls scripts/*.sh >/dev/null 2>&1; then
+    cp scripts/*.sh "$BUNDLE_DIR/" 2>/dev/null
+    echo "  ✓ Helper scripts"
+fi
 
-# Filebeat configs
-cp c2servers/*.yml "$BUNDLE_DIR/" 2>/dev/null
-cp redirs/*.yml "$BUNDLE_DIR/" 2>/dev/null
+# Filebeat configs for C2 servers
+if ls c2servers/*.yml >/dev/null 2>&1; then
+    cp c2servers/*.yml "$BUNDLE_DIR/" 2>/dev/null
+    COUNT=$(ls c2servers/*.yml 2>/dev/null | wc -l)
+    echo "  ✓ C2 filebeat configs ($COUNT files)"
+else
+    echo "  ⚠ No C2 filebeat configs (will be auto-generated)"
+fi
+
+# Filebeat configs for redirectors
+if ls redirs/*.yml >/dev/null 2>&1; then
+    cp redirs/*.yml "$BUNDLE_DIR/" 2>/dev/null
+    COUNT=$(ls redirs/*.yml 2>/dev/null | wc -l)
+    echo "  ✓ Redirector filebeat configs ($COUNT files)"
+else
+    echo "  ⚠ No redirector filebeat configs (will be auto-generated)"
+fi
 
 # Create wrapper script that extracts and runs
 cat > "$BUNDLE_DIR/install-redelk.sh" << 'EOF'
@@ -75,11 +109,29 @@ chmod +x "$BUNDLE_DIR/install-redelk.sh"
 
 # Create the tarball
 tar czf redelk-v3-deployment.tar.gz "$BUNDLE_DIR/"
+BUNDLE_SIZE=$(du -h redelk-v3-deployment.tar.gz | cut -f1)
 rm -rf "$BUNDLE_DIR"
 
-echo "Bundle created: redelk-v3-deployment.tar.gz"
 echo ""
-echo "To deploy:"
-echo "  1. Copy to server: scp redelk-v3-deployment.tar.gz user@server:/tmp/"
-echo "  2. Extract: tar xzf redelk-v3-deployment.tar.gz"
-echo "  3. Deploy: cd DEPLOYMENT-BUNDLE && sudo bash install-redelk.sh"
+echo "=========================================="
+echo "Bundle created successfully!"
+echo "=========================================="
+echo ""
+echo "File: redelk-v3-deployment.tar.gz ($BUNDLE_SIZE)"
+echo ""
+echo "DEPLOYMENT INSTRUCTIONS:"
+echo ""
+echo "1. Copy to server:"
+echo "   scp redelk-v3-deployment.tar.gz root@YOUR_SERVER:/tmp/"
+echo ""
+echo "2. On server, extract and deploy:"
+echo "   cd /tmp"
+echo "   tar xzf redelk-v3-deployment.tar.gz"
+echo "   cd DEPLOYMENT-BUNDLE"
+echo "   sudo bash install-redelk.sh"
+echo ""
+echo "3. After deployment, packages will be at:"
+echo "   /tmp/c2servers.tgz"
+echo "   /tmp/redirs.tgz"
+echo ""
+echo "=========================================="
