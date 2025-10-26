@@ -472,7 +472,18 @@ input {
 }
 
 filter {
-  mutate { add_field => { "[@metadata][index_prefix]" => "redelk" } }
+  # Route to correct index based on logtype/infralogtype fields
+  if [logtype] == "rtops" or [fields][logtype] == "rtops" {
+    mutate { add_field => { "[@metadata][index_prefix]" => "rtops" } }
+  } else if [infralogtype] == "redirtraffic" or [fields][infralogtype] == "redirtraffic" {
+    mutate { add_field => { "[@metadata][index_prefix]" => "redirtraffic" } }
+  } else if [infralogtype] == "redirerror" or [fields][infralogtype] == "redirerror" {
+    mutate { add_field => { "[@metadata][index_prefix]" => "redirerror" } }
+  } else if [infralogtype] == "c2" or [fields][infralogtype] == "c2" {
+    mutate { add_field => { "[@metadata][index_prefix]" => "rtops" } }
+  } else {
+    mutate { add_field => { "[@metadata][index_prefix]" => "redelk" } }
+  }
 }
 
 output {
@@ -815,16 +826,18 @@ create_deployment_packages() {
     echo "[INFO] Creating deployment packages..."
 
     local server_ip
-    server_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    # Try multiple methods to detect the primary IP
+    server_ip="$(ip -4 route get 8.8.8.8 2>/dev/null | grep -oP 'src \K[\d.]+')"
+    [[ -z "$server_ip" ]] && server_ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    [[ -z "$server_ip" ]] && server_ip="$(ip -4 addr show eth0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -1)"
     [[ -z "$server_ip" ]] && server_ip="$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)"
 
-    if [ -z "$server_ip" ]; then
+    if [ -z "$server_ip" ] || [ "$server_ip" = "127.0.0.1" ]; then
         echo "[ERROR] Could not detect server IP"
         echo "[INFO] Available network interfaces:"
         ip -4 addr show | grep -E "inet\s" || true
         echo ""
-        echo "[INFO] Please ensure the server has a valid IPv4 address"
-        echo "[INFO] You can manually specify the IP in the config files after deployment"
+        echo "[WARN] Packages will contain placeholder - you must replace REDELK_SERVER_IP manually"
         server_ip="REDELK_SERVER_IP"
     else
         echo "[INFO] Detected server IP: $server_ip"
