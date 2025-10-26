@@ -717,10 +717,22 @@ create_deployment_packages() {
     cp "${REDELK_PATH}/certs/redelkCA.crt" "${c2_pkg}/"
     cp "${REDELK_PATH}/certs/sshkey" "${c2_pkg}/"
 
-    # Add C2 Filebeat configurations
+    # Get server IP for replacing in configs
+    local server_ip=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
+    if [ -z "$server_ip" ]; then
+        echo "[WARNING] Could not detect server IP, using placeholder"
+        server_ip="REDELK_SERVER_IP"
+    else
+        echo "[INFO] Using server IP: $server_ip for filebeat configs"
+    fi
+
+    # Add C2 Filebeat configurations with IP replacement
     mkdir -p "${c2_pkg}/filebeat"
     if ls "${REDELK_PATH}/c2servers/"*.yml >/dev/null 2>&1; then
-        cp "${REDELK_PATH}/c2servers/"*.yml "${c2_pkg}/filebeat/"
+        for config in "${REDELK_PATH}/c2servers/"*.yml; do
+            local filename=$(basename "$config")
+            sed "s/REDELK_SERVER_IP/${server_ip}/g" "$config" > "${c2_pkg}/filebeat/${filename}"
+        done
     fi
 
     tar czf "${REDELK_PATH}/c2servers.tgz" -C "${REDELK_PATH}" c2package
@@ -733,15 +745,20 @@ create_deployment_packages() {
     cp "${REDELK_PATH}/certs/redelkCA.crt" "${redir_pkg}/"
     cp "${REDELK_PATH}/certs/elkserver.crt" "${redir_pkg}/"
 
-    # Add redirector Filebeat configurations
+    # Add redirector Filebeat configurations with IP replacement
     mkdir -p "${redir_pkg}/filebeat"
     if ls "${REDELK_PATH}/redirs/"*.yml >/dev/null 2>&1; then
-        cp "${REDELK_PATH}/redirs/"*.yml "${redir_pkg}/filebeat/"
+        for config in "${REDELK_PATH}/redirs/"*.yml; do
+            local filename=$(basename "$config")
+            sed "s/REDELK_SERVER_IP/${server_ip}/g" "$config" > "${redir_pkg}/filebeat/${filename}"
+        done
     fi
 
     tar czf "${REDELK_PATH}/redirs.tgz" -C "${REDELK_PATH}" redirpackage
     chmod 644 "${REDELK_PATH}/redirs.tgz"  # Make world-readable for easy transfer
     rm -rf "${redir_pkg}"
+
+    echo "[INFO] Deployment packages created with RedELK server IP: ${server_ip}"
 }
 
 print_summary() {

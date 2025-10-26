@@ -2,12 +2,13 @@
 # Ships Apache access logs to RedELK
 
 filebeat.inputs:
-# Apache Access Logs with RedELK format
+# Apache Access Logs
 - type: log
   enabled: true
   paths:
-    - /var/log/apache2/access-redelk.log
-    - /var/log/httpd/access-redelk.log
+    - /var/log/apache2/access.log
+    - /var/log/apache2/other_vhosts_access.log
+    - /var/log/httpd/access_log
   fields:
     infralogtype: redirtraffic
     redirprogram: apache
@@ -17,8 +18,8 @@ filebeat.inputs:
 - type: log
   enabled: true
   paths:
-    - /var/log/apache2/ssl_access-redelk.log
-    - /var/log/httpd/ssl_access-redelk.log
+    - /var/log/apache2/ssl_access.log
+    - /var/log/httpd/ssl_access_log
   fields:
     infralogtype: redirtraffic
     redirprogram: apache
@@ -28,9 +29,8 @@ filebeat.inputs:
 # Output to RedELK Logstash
 output.logstash:
   hosts: ["REDELK_SERVER_IP:5044"]
-  ssl.enabled: true
-  ssl.certificate_authorities: ["/etc/filebeat/redelkCA.crt"]
-  ssl.verification_mode: none
+  # SSL disabled for simpler deployment - can be enabled if needed
+  ssl.enabled: false
   bulk_max_size: 2048
 
 # Processors

@@ -1,51 +1,38 @@
-# Filebeat Configuration for Nginx Redirector
-# Ships Nginx access logs to RedELK
+# RedELK Nginx Redirector Filebeat Configuration
+# FIXED VERSION - Standard paths, no SSL, IP will be replaced at deployment
 
 filebeat.inputs:
-# Nginx Access Logs with RedELK format
 - type: log
   enabled: true
   paths:
-    - /var/log/nginx/access-redelk.log
+    - /var/log/nginx/access.log
+    - /var/log/nginx/*access*.log
   fields:
     infralogtype: redirtraffic
     redirprogram: nginx
-  fields_under_root: false
+  fields_under_root: true
+  exclude_lines: ['ELB-HealthChecker', 'Amazon-Route53-Health-Check']
 
-# Nginx SSL Access Logs
 - type: log
   enabled: true
   paths:
-    - /var/log/nginx/ssl_access-redelk.log
+    - /var/log/nginx/error.log
+    - /var/log/nginx/*error*.log
   fields:
-    infralogtype: redirtraffic
+    infralogtype: redirerror
     redirprogram: nginx
-    ssl: true
-  fields_under_root: false
+  fields_under_root: true
 
-# Output to RedELK Logstash
 output.logstash:
   hosts: ["REDELK_SERVER_IP:5044"]
-  ssl.enabled: true
-  ssl.certificate_authorities: ["/etc/filebeat/redelkCA.crt"]
-  ssl.verification_mode: none
-  bulk_max_size: 2048
+  # SSL disabled for simpler deployment - can be enabled if needed
+  ssl.enabled: false
 
-# Processors
 processors:
   - add_host_metadata:
       when.not.contains:
         tags: forwarded
-  - add_fields:
-      target: ''
-      fields:
-        redir_name: "${HOSTNAME}"
-        attack_scenario: "${SCENARIO_NAME:default}"
 
-# Exclude lines
-exclude_lines: ['^#', '^$', 'ELB-HealthChecker', 'Amazon-Route53-Health-Check']
-
-# Logging
 logging.level: info
 logging.to_files: true
 logging.files:

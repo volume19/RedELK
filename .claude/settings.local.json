@@ -23,7 +23,8 @@
       "Bash(git ls-tree:*)",
       "Bash(rm:*)",
       "Bash(mv:*)",
-      "Bash(./create-bundle.sh:*)"
+      "Bash(./create-bundle.sh:*)",
+      "Bash(bash create-bundle.sh:*)"
     ],
     "deny": [],
     "ask": []
