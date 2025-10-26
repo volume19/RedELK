@@ -13,8 +13,9 @@ echo "Copying files..."
 
 # Main deployment script (REQUIRED)
 if [[ -f "redelk_ubuntu_deploy.sh" ]]; then
-    cp redelk_ubuntu_deploy.sh "$BUNDLE_DIR/"
-    echo "  ✓ Deployment script"
+    # CRITICAL: Convert CRLF to LF before bundling
+    sed 's/\r$//' redelk_ubuntu_deploy.sh > "$BUNDLE_DIR/redelk_ubuntu_deploy.sh"
+    echo "  ✓ Deployment script (line endings fixed)"
 else
     echo "  ✗ Missing redelk_ubuntu_deploy.sh"
 fi
@@ -45,8 +46,10 @@ fi
 
 # Helper scripts
 if ls scripts/*.sh >/dev/null 2>&1; then
-    cp scripts/*.sh "$BUNDLE_DIR/" 2>/dev/null
-    echo "  ✓ Helper scripts"
+    for script in scripts/*.sh; do
+        sed 's/\r$//' "$script" > "$BUNDLE_DIR/$(basename "$script")"
+    done
+    echo "  ✓ Helper scripts (line endings fixed)"
 fi
 
 # Filebeat configs for C2 servers
