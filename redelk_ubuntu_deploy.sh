@@ -13,6 +13,7 @@ sed -i '1s/^\xEF\xBB\xBF//' "$0" 2>/dev/null || true
 
 # Constants
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly REDELK_VERSION="$(cat "${SCRIPT_DIR}/VERSION" 2>/dev/null || echo "3.0.1")"
 readonly LOG_FILE="/var/log/redelk_deploy.log"
 readonly REDELK_PATH="/opt/RedELK"
 readonly ELASTIC_PASSWORD="RedElk2024Secure"
@@ -44,7 +45,7 @@ print_banner() {
     echo "   |  _ <|  __/| (_| || |___ | |___ | . \ "
     echo "   |_| \_\___| \____||_____||_____||_|\_\ "
     echo ""
-    echo "   Ubuntu Server Deployment v3.0"
+    echo "   Ubuntu Server Deployment v${REDELK_VERSION}"
     echo ""
 }
 

@@ -101,6 +101,16 @@ Production-hardened release with critical fixes for reliability:
 
 See [CHANGELOG.md](CHANGELOG.md) for complete details.
 
+## 📌 Versioning
+
+RedELK follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
+
+- **Current Version**: v3.0.1 (see [VERSION](VERSION) file)
+- **Version History**: [CHANGELOG.md](CHANGELOG.md)
+- **Versioning Policy**: [VERSIONING.md](VERSIONING.md)
+
+For upgrade paths and compatibility information, see [VERSIONING.md](VERSIONING.md).
+
 ## 🛡️ Security
 
 - Elasticsearch bound to localhost only (secure by default)
