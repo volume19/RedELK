@@ -863,7 +863,7 @@ create_deployment_packages() {
         echo "[WARN] No filebeat configs found in ${REDELK_PATH}/c2servers/, creating defaults..."
 
         # Create Cobalt Strike config
-        cat > "${c2_pkg}/filebeat/filebeat-cobaltstrike.yml" <<FBEOF
+        cat > "${c2_pkg}/filebeat/filebeat-cobaltstrike.yml" <<'FBEOF'
 filebeat.inputs:
 - type: log
   enabled: true
@@ -879,12 +879,12 @@ filebeat.inputs:
     c2_program: cobaltstrike
     infralogtype: c2
   fields_under_root: false
-  multiline.pattern: '^\\\d{2}/\\\d{2} \\\d{2}:\\\d{2}:\\\d{2}'
+  multiline.pattern: '^\d{2}/\d{2} \d{2}:\d{2}:\d{2}'
   multiline.negate: true
   multiline.match: after
 
 output.logstash:
-  hosts: ["${server_ip}:5044"]
+  hosts: ["REDELK_SERVER_IP:5044"]
   ssl.enabled: false
   bulk_max_size: 2048
 
@@ -893,7 +893,7 @@ processors:
   - add_fields:
       target: ''
       fields:
-        attack_scenario: "\\\${SCENARIO_NAME:default}"
+        attack_scenario: "${SCENARIO_NAME:default}"
 
 logging.level: info
 logging.to_files: true
@@ -901,9 +901,11 @@ logging.files:
   path: /var/log/filebeat
   keepfiles: 7
 FBEOF
+        # Replace IP placeholder
+        sed -i "s/REDELK_SERVER_IP/${server_ip}/g" "${c2_pkg}/filebeat/filebeat-cobaltstrike.yml"
 
         # Create PoshC2 config
-        cat > "${c2_pkg}/filebeat/filebeat-poshc2.yml" <<FBEOF
+        cat > "${c2_pkg}/filebeat/filebeat-poshc2.yml" <<'FBEOF'
 filebeat.inputs:
 - type: log
   enabled: true
@@ -917,7 +919,7 @@ filebeat.inputs:
   fields_under_root: false
 
 output.logstash:
-  hosts: ["${server_ip}:5044"]
+  hosts: ["REDELK_SERVER_IP:5044"]
   ssl.enabled: false
 
 logging.level: info
@@ -926,6 +928,8 @@ logging.files:
   path: /var/log/filebeat
   keepfiles: 7
 FBEOF
+        # Replace IP placeholder
+        sed -i "s/REDELK_SERVER_IP/${server_ip}/g" "${c2_pkg}/filebeat/filebeat-poshc2.yml"
 
         echo "[INFO] Created default filebeat configs with IP: ${server_ip}"
     fi
@@ -1010,7 +1014,7 @@ EOF
         echo "[WARN] No filebeat configs found in ${REDELK_PATH}/redirs/, creating defaults..."
 
         # Create Nginx config
-        cat > "${redir_pkg}/filebeat/filebeat-nginx.yml" <<FBEOF
+        cat > "${redir_pkg}/filebeat/filebeat-nginx.yml" <<'FBEOF'
 filebeat.inputs:
 - type: log
   enabled: true
@@ -1023,7 +1027,7 @@ filebeat.inputs:
   fields_under_root: true
 
 output.logstash:
-  hosts: ["${server_ip}:5044"]
+  hosts: ["REDELK_SERVER_IP:5044"]
   ssl.enabled: false
 
 logging.level: info
@@ -1032,9 +1036,10 @@ logging.files:
   path: /var/log/filebeat
   keepfiles: 7
 FBEOF
+        sed -i "s/REDELK_SERVER_IP/${server_ip}/g" "${redir_pkg}/filebeat/filebeat-nginx.yml"
 
         # Create Apache config
-        cat > "${redir_pkg}/filebeat/filebeat-apache.yml" <<FBEOF
+        cat > "${redir_pkg}/filebeat/filebeat-apache.yml" <<'FBEOF'
 filebeat.inputs:
 - type: log
   enabled: true
@@ -1049,7 +1054,7 @@ filebeat.inputs:
   fields_under_root: true
 
 output.logstash:
-  hosts: ["${server_ip}:5044"]
+  hosts: ["REDELK_SERVER_IP:5044"]
   ssl.enabled: false
 
 logging.level: info
@@ -1058,9 +1063,10 @@ logging.files:
   path: /var/log/filebeat
   keepfiles: 7
 FBEOF
+        sed -i "s/REDELK_SERVER_IP/${server_ip}/g" "${redir_pkg}/filebeat/filebeat-apache.yml"
 
         # Create HAProxy config
-        cat > "${redir_pkg}/filebeat/filebeat-haproxy.yml" <<FBEOF
+        cat > "${redir_pkg}/filebeat/filebeat-haproxy.yml" <<'FBEOF'
 filebeat.inputs:
 - type: log
   enabled: true
@@ -1072,7 +1078,7 @@ filebeat.inputs:
   fields_under_root: true
 
 output.logstash:
-  hosts: ["${server_ip}:5044"]
+  hosts: ["REDELK_SERVER_IP:5044"]
   ssl.enabled: false
 
 logging.level: info
@@ -1081,6 +1087,7 @@ logging.files:
   path: /var/log/filebeat
   keepfiles: 7
 FBEOF
+        sed -i "s/REDELK_SERVER_IP/${server_ip}/g" "${redir_pkg}/filebeat/filebeat-haproxy.yml"
 
         echo "[INFO] Created default filebeat configs with IP: ${server_ip}"
     fi
