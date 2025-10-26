@@ -24,7 +24,9 @@
       "Bash(rm:*)",
       "Bash(mv:*)",
       "Bash(./create-bundle.sh:*)",
-      "Bash(bash create-bundle.sh:*)"
+      "Bash(bash create-bundle.sh:*)",
+      "Bash(tar:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

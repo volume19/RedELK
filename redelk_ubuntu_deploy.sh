@@ -323,7 +323,6 @@ EOF
 create_docker_compose() {
     echo "[INFO] Creating Docker Compose configuration..."
     cat > "${REDELK_PATH}/elkserver/docker/docker-compose.yml" <<'EOF'
-version: "3.9"
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
@@ -410,7 +409,7 @@ services:
       - "443:443"
     depends_on:
       kibana:
-        condition: service_healthy
+        condition: service_started
     networks: [redelk]
 
 networks:
@@ -508,7 +507,12 @@ provision_logstash_api_key() {
         echo "$resp"
         exit 1
     fi
-    echo "[INFO] LS_ES_API_KEY created"
+
+    # Persist to .env for systemd restarts
+    sed -i "/^LS_ES_API_KEY=/d" "${REDELK_PATH}/elkserver/docker/.env" 2>/dev/null || true
+    printf "LS_ES_API_KEY=%s\n" "$LS_ES_API_KEY" >> "${REDELK_PATH}/elkserver/docker/.env"
+
+    echo "[INFO] LS_ES_API_KEY created and persisted to .env"
 }
 
 provision_kibana_service_token() {
@@ -528,6 +532,10 @@ provision_kibana_service_token() {
     fi
 
     if [[ -z "$token" ]]; then
+        # Delete existing token to ensure idempotency
+        curl -sS -u "elastic:${ELASTIC_PASSWORD}" \
+            -X DELETE "http://127.0.0.1:9200/_security/service/elastic/kibana/credential/token/redelk" >/dev/null 2>&1 || true
+
         local resp
         resp="$(curl -sS -u "elastic:${ELASTIC_PASSWORD}" \
             -H 'Content-Type: application/json' \
@@ -577,7 +585,7 @@ WorkingDirectory=${REDELK_PATH}/elkserver/docker
 Environment="REDELK_PATH=${REDELK_PATH}"
 Environment="ELASTIC_PASSWORD=${ELASTIC_PASSWORD}"
 Environment="ES_JAVA_OPTS=${ES_JAVA_OPTS}"
-Environment="LS_ES_API_KEY=${LS_ES_API_KEY}"
+EnvironmentFile=${REDELK_PATH}/elkserver/docker/.env
 ExecStart=/usr/bin/docker compose up -d
 ExecStop=/usr/bin/docker compose down
 ExecReload=/usr/bin/docker compose restart
