@@ -841,6 +841,9 @@ create_deployment_packages() {
     fi
 
     mkdir -p "${c2_pkg}/filebeat"
+
+    # Copy existing configs if available
+    local config_count=0
     if ls "${REDELK_PATH}/c2servers/"*.yml >/dev/null 2>&1; then
         for config in "${REDELK_PATH}/c2servers/"*.yml; do
             local filename=$(basename "$config")
@@ -851,7 +854,80 @@ create_deployment_packages() {
                 cp "$config" "${c2_pkg}/filebeat/${filename}"
                 echo "[WARN] Using placeholder in $filename - update manually with actual IP"
             fi
+            ((config_count++))
         done
+    fi
+
+    # If no configs found, create default ones
+    if [[ $config_count -eq 0 ]]; then
+        echo "[WARN] No filebeat configs found in ${REDELK_PATH}/c2servers/, creating defaults..."
+
+        # Create Cobalt Strike config
+        cat > "${c2_pkg}/filebeat/filebeat-cobaltstrike.yml" <<FBEOF
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /opt/cobaltstrike/logs/*/beacon_*.log
+    - /opt/cobaltstrike/logs/*/events.log
+    - /opt/cobaltstrike/logs/*/weblog.log
+    - /opt/cobaltstrike/logs/*/downloads.log
+    - /opt/cobaltstrike/logs/*/keystrokes.log
+    - /opt/cobaltstrike/logs/*/screenshots.log
+  fields:
+    logtype: rtops
+    c2_program: cobaltstrike
+    infralogtype: c2
+  fields_under_root: false
+  multiline.pattern: '^\\\d{2}/\\\d{2} \\\d{2}:\\\d{2}:\\\d{2}'
+  multiline.negate: true
+  multiline.match: after
+
+output.logstash:
+  hosts: ["${server_ip}:5044"]
+  ssl.enabled: false
+  bulk_max_size: 2048
+
+processors:
+  - add_host_metadata: ~
+  - add_fields:
+      target: ''
+      fields:
+        attack_scenario: "\\\${SCENARIO_NAME:default}"
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  keepfiles: 7
+FBEOF
+
+        # Create PoshC2 config
+        cat > "${c2_pkg}/filebeat/filebeat-poshc2.yml" <<FBEOF
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /var/poshc2/*/database.db.log
+    - /var/poshc2/*/implant_logs/*.log
+  fields:
+    logtype: rtops
+    c2_program: poshc2
+    infralogtype: c2
+  fields_under_root: false
+
+output.logstash:
+  hosts: ["${server_ip}:5044"]
+  ssl.enabled: false
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  keepfiles: 7
+FBEOF
+
+        echo "[INFO] Created default filebeat configs with IP: ${server_ip}"
     fi
 
     cat > "${c2_pkg}/deploy-filebeat-c2.sh" <<'EOF'
@@ -912,6 +988,9 @@ EOF
     fi
 
     mkdir -p "${redir_pkg}/filebeat"
+
+    # Copy existing configs if available
+    config_count=0
     if ls "${REDELK_PATH}/redirs/"*.yml >/dev/null 2>&1; then
         for config in "${REDELK_PATH}/redirs/"*.yml; do
             local filename=$(basename "$config")
@@ -922,7 +1001,88 @@ EOF
                 cp "$config" "${redir_pkg}/filebeat/${filename}"
                 echo "[WARN] Using placeholder in $filename - update manually with actual IP"
             fi
+            ((config_count++))
         done
+    fi
+
+    # If no configs found, create default ones
+    if [[ $config_count -eq 0 ]]; then
+        echo "[WARN] No filebeat configs found in ${REDELK_PATH}/redirs/, creating defaults..."
+
+        # Create Nginx config
+        cat > "${redir_pkg}/filebeat/filebeat-nginx.yml" <<FBEOF
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /var/log/nginx/access.log
+    - /var/log/nginx/*access*.log
+  fields:
+    infralogtype: redirtraffic
+    redirprogram: nginx
+  fields_under_root: true
+
+output.logstash:
+  hosts: ["${server_ip}:5044"]
+  ssl.enabled: false
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  keepfiles: 7
+FBEOF
+
+        # Create Apache config
+        cat > "${redir_pkg}/filebeat/filebeat-apache.yml" <<FBEOF
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /var/log/apache2/access.log
+    - /var/log/apache2/*access*.log
+    - /var/log/httpd/access_log
+    - /var/log/httpd/*access*.log
+  fields:
+    infralogtype: redirtraffic
+    redirprogram: apache
+  fields_under_root: true
+
+output.logstash:
+  hosts: ["${server_ip}:5044"]
+  ssl.enabled: false
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  keepfiles: 7
+FBEOF
+
+        # Create HAProxy config
+        cat > "${redir_pkg}/filebeat/filebeat-haproxy.yml" <<FBEOF
+filebeat.inputs:
+- type: log
+  enabled: true
+  paths:
+    - /var/log/haproxy.log
+  fields:
+    infralogtype: redirtraffic
+    redirprogram: haproxy
+  fields_under_root: true
+
+output.logstash:
+  hosts: ["${server_ip}:5044"]
+  ssl.enabled: false
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  keepfiles: 7
+FBEOF
+
+        echo "[INFO] Created default filebeat configs with IP: ${server_ip}"
     fi
 
     cat > "${redir_pkg}/deploy-filebeat-redir.sh" <<'EOF'
