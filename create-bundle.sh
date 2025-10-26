@@ -11,6 +11,14 @@ mkdir -p "$BUNDLE_DIR"
 # Copy all required files
 echo "Copying files..."
 
+# VERSION file (REQUIRED for versioning)
+if [[ -f "VERSION" ]]; then
+    cp VERSION "$BUNDLE_DIR/"
+    echo "  ✓ VERSION file"
+else
+    echo "  ✗ Missing VERSION file"
+fi
+
 # Main deployment script (REQUIRED)
 if [[ -f "redelk_ubuntu_deploy.sh" ]]; then
     # CRITICAL: Convert CRLF to LF before bundling
