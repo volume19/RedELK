@@ -724,6 +724,7 @@ create_deployment_packages() {
     fi
 
     tar czf "${REDELK_PATH}/c2servers.tgz" -C "${REDELK_PATH}" c2package
+    chmod 644 "${REDELK_PATH}/c2servers.tgz"  # Make world-readable for easy transfer
     rm -rf "${c2_pkg}"
 
     # Redirectors package
@@ -739,6 +740,7 @@ create_deployment_packages() {
     fi
 
     tar czf "${REDELK_PATH}/redirs.tgz" -C "${REDELK_PATH}" redirpackage
+    chmod 644 "${REDELK_PATH}/redirs.tgz"  # Make world-readable for easy transfer
     rm -rf "${redir_pkg}"
 }
 
