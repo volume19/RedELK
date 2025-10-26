@@ -28,7 +28,10 @@
       "Bash(tar:*)",
       "Bash(cat:*)",
       "Bash(md5sum:*)",
-      "Bash(dos2unix:*)"
+      "Bash(dos2unix:*)",
+      "Bash(for f in */*.FIXED)",
+      "Bash(do cp \"$f\" \"$f%.FIXED\")",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []

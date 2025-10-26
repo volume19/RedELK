@@ -1,38 +1,55 @@
 # RedELK Nginx Redirector Filebeat Configuration
-# FIXED VERSION - Standard paths, no SSL, IP will be replaced at deployment
+# Ships Nginx access and error logs to RedELK
 
 filebeat.inputs:
-- type: log
+# Nginx Access Logs
+- type: filestream
+  id: nginx-access
   enabled: true
   paths:
     - /var/log/nginx/access.log
     - /var/log/nginx/*access*.log
+  exclude_files: ['\.gz$', '\.bz2$', '\.zip$']
+  exclude_lines: ['ELB-HealthChecker', 'Amazon-Route53-Health-Check']
   fields:
     infralogtype: redirtraffic
     redirprogram: nginx
   fields_under_root: true
-  exclude_lines: ['ELB-HealthChecker', 'Amazon-Route53-Health-Check']
 
-- type: log
+# Nginx Error Logs
+- type: filestream
+  id: nginx-error
   enabled: true
   paths:
     - /var/log/nginx/error.log
     - /var/log/nginx/*error*.log
+  exclude_files: ['\.gz$', '\.bz2$', '\.zip$']
   fields:
     infralogtype: redirerror
     redirprogram: nginx
   fields_under_root: true
 
+# Output to RedELK Logstash
 output.logstash:
-  hosts: ["REDELK_SERVER_IP:5044"]
-  # SSL disabled for simpler deployment - can be enabled if needed
+  hosts: ['REDELK_SERVER_IP:5044']
   ssl.enabled: false
 
+# Processors
 processors:
   - add_host_metadata:
       when.not.contains:
         tags: forwarded
+  - add_fields:
+      target: ''
+      fields:
+        role: redir
+  - add_tags:
+      tags: ['redelk', 'nginx']
 
+# Template management
+setup.template.enabled: false
+
+# Logging
 logging.level: info
 logging.to_files: true
 logging.files:

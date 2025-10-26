@@ -3,25 +3,31 @@
 
 filebeat.inputs:
 # Cobalt Strike Beacon Logs
-- type: log
+- type: filestream
+  id: cobaltstrike-beacon
   enabled: true
   paths:
     - /opt/cobaltstrike/logs/*/beacon_*.log
+  exclude_files: ['\.gz$']
   fields:
     logtype: rtops
     c2_program: cobaltstrike
     c2_log_type: beacon
     infralogtype: c2
   fields_under_root: false
-  multiline.pattern: '^\d{2}/\d{2} \d{2}:\d{2}:\d{2}'
-  multiline.negate: true
-  multiline.match: after
+  multiline:
+    type: pattern
+    pattern: '^\d{2}/\d{2} \d{2}:\d{2}:\d{2}'
+    negate: true
+    match: after
 
 # Cobalt Strike Events Log (operator join/leave)
-- type: log
+- type: filestream
+  id: cobaltstrike-events
   enabled: true
   paths:
     - /opt/cobaltstrike/logs/*/events.log
+  exclude_files: ['\.gz$']
   fields:
     logtype: rtops
     c2_program: cobaltstrike
@@ -30,10 +36,12 @@ filebeat.inputs:
   fields_under_root: false
 
 # Cobalt Strike Web Logs
-- type: log
+- type: filestream
+  id: cobaltstrike-weblog
   enabled: true
   paths:
     - /opt/cobaltstrike/logs/*/weblog.log
+  exclude_files: ['\.gz$']
   fields:
     logtype: rtops
     c2_program: cobaltstrike
@@ -42,10 +50,12 @@ filebeat.inputs:
   fields_under_root: false
 
 # Cobalt Strike Downloads Log
-- type: log
+- type: filestream
+  id: cobaltstrike-downloads
   enabled: true
   paths:
     - /opt/cobaltstrike/logs/*/downloads.log
+  exclude_files: ['\.gz$']
   fields:
     logtype: rtops
     c2_program: cobaltstrike
@@ -54,10 +64,12 @@ filebeat.inputs:
   fields_under_root: false
 
 # Cobalt Strike Keystrokes Log
-- type: log
+- type: filestream
+  id: cobaltstrike-keystrokes
   enabled: true
   paths:
     - /opt/cobaltstrike/logs/*/keystrokes.log
+  exclude_files: ['\.gz$']
   fields:
     logtype: rtops
     c2_program: cobaltstrike
@@ -66,10 +78,12 @@ filebeat.inputs:
   fields_under_root: false
 
 # Cobalt Strike Screenshots Log (CS 4.2+)
-- type: log
+- type: filestream
+  id: cobaltstrike-screenshots
   enabled: true
   paths:
     - /opt/cobaltstrike/logs/*/screenshots.log
+  exclude_files: ['\.gz$']
   fields:
     logtype: rtops
     c2_program: cobaltstrike
@@ -79,8 +93,7 @@ filebeat.inputs:
 
 # Output to RedELK Logstash
 output.logstash:
-  hosts: ["REDELK_SERVER_IP:5044"]
-  # SSL disabled for simpler deployment - can be enabled if needed
+  hosts: ['REDELK_SERVER_IP:5044']
   ssl.enabled: false
   bulk_max_size: 2048
 
@@ -93,8 +106,13 @@ processors:
   - add_fields:
       target: ''
       fields:
-        attack_scenario: "${SCENARIO_NAME:default}"
-        teamserver_name: "${HOSTNAME}"
+        role: c2
+        attack_scenario: default
+  - add_tags:
+      tags: ['redelk', 'cobaltstrike']
+
+# Template management
+setup.template.enabled: false
 
 # Logging
 logging.level: info
@@ -104,8 +122,3 @@ logging.files:
   name: filebeat
   keepfiles: 7
   permissions: 0644
-
-# Monitoring (optional)
-monitoring.enabled: false
-monitoring.elasticsearch:
-  hosts: ["REDELK_SERVER_IP:9200"]

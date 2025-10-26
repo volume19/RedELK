@@ -3,23 +3,29 @@
 
 filebeat.inputs:
 # Apache Access Logs
-- type: log
+- type: filestream
+  id: apache-access
   enabled: true
   paths:
     - /var/log/apache2/access.log
     - /var/log/apache2/other_vhosts_access.log
     - /var/log/httpd/access_log
+  exclude_files: ['\.gz$', '\.bz2$', '\.zip$']
+  exclude_lines: ['^#', '^$', 'ELB-HealthChecker', 'Amazon-Route53-Health-Check']
   fields:
     infralogtype: redirtraffic
     redirprogram: apache
   fields_under_root: false
 
 # Apache SSL Access Logs
-- type: log
+- type: filestream
+  id: apache-ssl-access
   enabled: true
   paths:
     - /var/log/apache2/ssl_access.log
     - /var/log/httpd/ssl_access_log
+  exclude_files: ['\.gz$', '\.bz2$', '\.zip$']
+  exclude_lines: ['^#', '^$', 'ELB-HealthChecker', 'Amazon-Route53-Health-Check']
   fields:
     infralogtype: redirtraffic
     redirprogram: apache
@@ -28,8 +34,7 @@ filebeat.inputs:
 
 # Output to RedELK Logstash
 output.logstash:
-  hosts: ["REDELK_SERVER_IP:5044"]
-  # SSL disabled for simpler deployment - can be enabled if needed
+  hosts: ['REDELK_SERVER_IP:5044']
   ssl.enabled: false
   bulk_max_size: 2048
 
@@ -41,11 +46,13 @@ processors:
   - add_fields:
       target: ''
       fields:
-        redir_name: "${HOSTNAME}"
-        attack_scenario: "${SCENARIO_NAME:default}"
+        role: redir
+        redir_name: default
+  - add_tags:
+      tags: ['redelk', 'apache']
 
-# Exclude lines (optional - adjust based on your needs)
-exclude_lines: ['^#', '^$', 'ELB-HealthChecker', 'Amazon-Route53-Health-Check']
+# Template management
+setup.template.enabled: false
 
 # Logging
 logging.level: info

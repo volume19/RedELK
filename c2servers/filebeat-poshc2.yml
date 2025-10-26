@@ -3,27 +3,33 @@
 
 filebeat.inputs:
 # PoshC2 Server Logs
-- type: log
+- type: filestream
+  id: poshc2-server
   enabled: true
   paths:
     - /opt/PoshC2/*/Server.log
     - /var/poshc2/*/Server.log
+  exclude_files: ['\.gz$']
   fields:
     logtype: rtops
     c2_program: poshc2
     c2_log_type: server
     infralogtype: c2
   fields_under_root: false
-  multiline.pattern: '^\d{4}-\d{2}-\d{2}'
-  multiline.negate: true
-  multiline.match: after
+  multiline:
+    type: pattern
+    pattern: '^\d{4}-\d{2}-\d{2}'
+    negate: true
+    match: after
 
 # PoshC2 Implant Logs
-- type: log
+- type: filestream
+  id: poshc2-implant
   enabled: true
   paths:
     - /opt/PoshC2/*/Implant-*.log
     - /var/poshc2/*/Implant-*.log
+  exclude_files: ['\.gz$']
   fields:
     logtype: rtops
     c2_program: poshc2
@@ -32,11 +38,13 @@ filebeat.inputs:
   fields_under_root: false
 
 # PoshC2 Task Logs
-- type: log
+- type: filestream
+  id: poshc2-tasks
   enabled: true
   paths:
     - /opt/PoshC2/*/Task*.log
     - /var/poshc2/*/Task*.log
+  exclude_files: ['\.gz$']
   fields:
     logtype: rtops
     c2_program: poshc2
@@ -45,11 +53,13 @@ filebeat.inputs:
   fields_under_root: false
 
 # PoshC2 C2 Server Log
-- type: log
+- type: filestream
+  id: poshc2-c2server
   enabled: true
   paths:
     - /opt/PoshC2/*/C2-Server.log
     - /var/poshc2/*/C2-Server.log
+  exclude_files: ['\.gz$']
   fields:
     logtype: rtops
     c2_program: poshc2
@@ -59,8 +69,7 @@ filebeat.inputs:
 
 # Output to RedELK Logstash
 output.logstash:
-  hosts: ["REDELK_SERVER_IP:5044"]
-  # SSL disabled for simpler deployment - can be enabled if needed
+  hosts: ['REDELK_SERVER_IP:5044']
   ssl.enabled: false
   bulk_max_size: 2048
 
@@ -72,8 +81,13 @@ processors:
   - add_fields:
       target: ''
       fields:
-        attack_scenario: "${SCENARIO_NAME:default}"
-        teamserver_name: "${HOSTNAME}"
+        role: c2
+        attack_scenario: default
+  - add_tags:
+      tags: ['redelk', 'poshc2']
+
+# Template management
+setup.template.enabled: false
 
 # Logging
 logging.level: info
