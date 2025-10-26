@@ -23,22 +23,33 @@ A comprehensive Red Team SIEM platform built on the Elastic Stack (Elasticsearch
 
 ## 🔧 Quick Installation
 
-### Option 1: Use the Deployment Bundle (Recommended)
+### Option 1: Download Complete Bundle (Recommended)
 ```bash
-# Copy the REDELK-DEPLOYMENT-BUNDLE folder to your server
-scp -r REDELK-DEPLOYMENT-BUNDLE/ user@server:/tmp/
+# Download the complete deployment bundle
+wget https://github.com/volume19/RedELK/releases/download/v3.0/redelk-v3-deployment.tar.gz
 
-# Run deployment
-cd /tmp/REDELK-DEPLOYMENT-BUNDLE
-sudo bash DEPLOY-ME.sh
+# Extract and deploy
+tar xzf redelk-v3-deployment.tar.gz
+cd DEPLOYMENT-BUNDLE
+sudo bash install-redelk.sh
 ```
 
-### Option 2: Direct Install
+### Option 2: Clone Repository
 ```bash
-# Clone and run
-git clone https://github.com/yourusername/RedELK.git
+# Clone repository
+git clone https://github.com/volume19/RedELK.git
 cd RedELK
+
+# Use the main deployment script
 sudo bash redelk_ubuntu_deploy.sh
+```
+
+### Option 3: Build Your Own Bundle
+```bash
+# Clone and create deployment bundle
+git clone https://github.com/volume19/RedELK.git
+cd RedELK
+./create-bundle.sh  # Creates redelk-v3-deployment.tar.gz
 ```
 
 ## 🎯 Post-Installation

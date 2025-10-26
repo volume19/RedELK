@@ -20,7 +20,10 @@
       "Bash(find:*)",
       "Bash(bash -n:*)",
       "Bash(docker logs:*)",
-      "Bash(git ls-tree:*)"
+      "Bash(git ls-tree:*)",
+      "Bash(rm:*)",
+      "Bash(mv:*)",
+      "Bash(./create-bundle.sh:*)"
     ],
     "deny": [],
     "ask": []

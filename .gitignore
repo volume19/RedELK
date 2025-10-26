@@ -1,6 +1,8 @@
-# Deployment bundle (contains all files, use for deployment only)
+# Deployment bundles and archives
 REDELK-DEPLOYMENT-BUNDLE/
-redelk-complete-bundle.tar.gz
+FIXED-DEPLOYMENT/
+*.tar.gz
+*.zip
 
 # Elasticsearch data
 elasticsearch-data/
