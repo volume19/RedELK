@@ -1,0 +1,42 @@
+{
+  "index_patterns": ["alarms-*"],
+  "template": {
+    "settings": {
+      "index": {
+        "number_of_shards": 1,
+        "number_of_replicas": 0,
+        "refresh_interval": "5s"
+      }
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "alarm.name": { "type": "keyword" },
+        "alarm.severity": { "type": "keyword" },
+        "alarm.confidence": { "type": "float" },
+        "alarm.description": { "type": "text" },
+        "alarm.type": { "type": "keyword" },
+        "alarm.status": { "type": "keyword" },
+        "alarm.first_seen": { "type": "date" },
+        "alarm.last_seen": { "type": "date" },
+        "alarm.count": { "type": "integer" },
+        "alarm.tags": { "type": "keyword" },
+        "source.ip": { "type": "ip" },
+        "source.domain": { "type": "keyword" },
+        "source.user": { "type": "keyword" },
+        "target.hostname": { "type": "keyword" },
+        "target.user": { "type": "keyword" },
+        "target.process": { "type": "keyword" },
+        "beacon.id": { "type": "keyword" },
+        "beacon.hostname": { "type": "keyword" },
+        "mitre.technique": { "type": "keyword" },
+        "mitre.tactic": { "type": "keyword" },
+        "threat.feed": { "type": "keyword" },
+        "threat.score": { "type": "float" },
+        "analyst.notes": { "type": "text" },
+        "analyst.assigned": { "type": "keyword" },
+        "scenario": { "type": "keyword" }
+      }
+    }
+  }
+}

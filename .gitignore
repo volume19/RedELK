@@ -1,0 +1,57 @@
+# Deployment bundle (contains all files, use for deployment only)
+REDELK-DEPLOYMENT-BUNDLE/
+redelk-complete-bundle.tar.gz
+
+# Elasticsearch data
+elasticsearch-data/
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+*.env.local
+
+# Docker volumes
+docker-data/
+volumes/
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.iml
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Certificates (if regenerated)
+*.key
+*.crt
+*.csr
+*.pem
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Node
+node_modules/
+
+# Test data
+test-output/
+test-results/

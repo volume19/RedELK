@@ -1,0 +1,55 @@
+{
+  "index_patterns": ["redirtraffic-*"],
+  "template": {
+    "settings": {
+      "index": {
+        "number_of_shards": 1,
+        "number_of_replicas": 0,
+        "refresh_interval": "5s"
+      }
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "message": { "type": "text" },
+        "redir.program": { "type": "keyword" },
+        "redir.name": { "type": "keyword" },
+        "redir.frontend": { "type": "keyword" },
+        "redir.backend": { "type": "keyword" },
+        "source.ip": { "type": "ip" },
+        "source.port": { "type": "integer" },
+        "source.geo.location": { "type": "geo_point" },
+        "source.geo.country_name": { "type": "keyword" },
+        "source.geo.city_name": { "type": "keyword" },
+        "source.as.organization.name": { "type": "keyword" },
+        "destination.ip": { "type": "ip" },
+        "destination.port": { "type": "integer" },
+        "destination.domain": { "type": "keyword" },
+        "http.request.method": { "type": "keyword" },
+        "http.request.path": { "type": "text" },
+        "http.request.referrer": { "type": "text" },
+        "http.response.status_code": { "type": "integer" },
+        "http.response.bytes": { "type": "long" },
+        "http.version": { "type": "keyword" },
+        "url.full": { "type": "text" },
+        "url.domain": { "type": "keyword" },
+        "url.path": { "type": "text" },
+        "url.query": { "type": "text" },
+        "user_agent.original": { "type": "text" },
+        "user_agent.device.name": { "type": "keyword" },
+        "user_agent.os.name": { "type": "keyword" },
+        "user_agent.os.version": { "type": "keyword" },
+        "user_agent.name": { "type": "keyword" },
+        "user_agent.version": { "type": "keyword" },
+        "tls.version": { "type": "keyword" },
+        "tls.cipher": { "type": "keyword" },
+        "threat.indicator": { "type": "keyword" },
+        "threat.matched": { "type": "boolean" },
+        "cdn.provider": { "type": "keyword" },
+        "cdn.detected": { "type": "boolean" },
+        "scenario": { "type": "keyword" },
+        "tags": { "type": "keyword" }
+      }
+    }
+  }
+}

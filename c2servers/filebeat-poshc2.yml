@@ -1,0 +1,86 @@
+# Filebeat Configuration for PoshC2 C2 Server
+# Ships logs from PoshC2 to RedELK
+
+filebeat.inputs:
+# PoshC2 Server Logs
+- type: log
+  enabled: true
+  paths:
+    - /opt/PoshC2/*/Server.log
+    - /var/poshc2/*/Server.log
+  fields:
+    logtype: rtops
+    c2_program: poshc2
+    c2_log_type: server
+    infralogtype: c2
+  fields_under_root: false
+  multiline.pattern: '^\d{4}-\d{2}-\d{2}'
+  multiline.negate: true
+  multiline.match: after
+
+# PoshC2 Implant Logs
+- type: log
+  enabled: true
+  paths:
+    - /opt/PoshC2/*/Implant-*.log
+    - /var/poshc2/*/Implant-*.log
+  fields:
+    logtype: rtops
+    c2_program: poshc2
+    c2_log_type: implant
+    infralogtype: c2
+  fields_under_root: false
+
+# PoshC2 Task Logs
+- type: log
+  enabled: true
+  paths:
+    - /opt/PoshC2/*/Task*.log
+    - /var/poshc2/*/Task*.log
+  fields:
+    logtype: rtops
+    c2_program: poshc2
+    c2_log_type: tasks
+    infralogtype: c2
+  fields_under_root: false
+
+# PoshC2 C2 Server Log
+- type: log
+  enabled: true
+  paths:
+    - /opt/PoshC2/*/C2-Server.log
+    - /var/poshc2/*/C2-Server.log
+  fields:
+    logtype: rtops
+    c2_program: poshc2
+    c2_log_type: c2server
+    infralogtype: c2
+  fields_under_root: false
+
+# Output to RedELK Logstash
+output.logstash:
+  hosts: ["REDELK_SERVER_IP:5044"]
+  ssl.enabled: true
+  ssl.certificate_authorities: ["/etc/filebeat/redelkCA.crt"]
+  ssl.verification_mode: none
+  bulk_max_size: 2048
+
+# Processors
+processors:
+  - add_host_metadata:
+      when.not.contains:
+        tags: forwarded
+  - add_fields:
+      target: ''
+      fields:
+        attack_scenario: "${SCENARIO_NAME:default}"
+        teamserver_name: "${HOSTNAME}"
+
+# Logging
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644

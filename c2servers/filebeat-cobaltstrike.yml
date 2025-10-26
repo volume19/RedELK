@@ -1,0 +1,112 @@
+# Filebeat Configuration for Cobalt Strike C2 Server
+# Ships logs from Cobalt Strike teamserver to RedELK
+
+filebeat.inputs:
+# Cobalt Strike Beacon Logs
+- type: log
+  enabled: true
+  paths:
+    - /opt/cobaltstrike/logs/*/beacon_*.log
+  fields:
+    logtype: rtops
+    c2_program: cobaltstrike
+    c2_log_type: beacon
+    infralogtype: c2
+  fields_under_root: false
+  multiline.pattern: '^\d{2}/\d{2} \d{2}:\d{2}:\d{2}'
+  multiline.negate: true
+  multiline.match: after
+
+# Cobalt Strike Events Log (operator join/leave)
+- type: log
+  enabled: true
+  paths:
+    - /opt/cobaltstrike/logs/*/events.log
+  fields:
+    logtype: rtops
+    c2_program: cobaltstrike
+    c2_log_type: events
+    infralogtype: c2
+  fields_under_root: false
+
+# Cobalt Strike Web Logs
+- type: log
+  enabled: true
+  paths:
+    - /opt/cobaltstrike/logs/*/weblog.log
+  fields:
+    logtype: rtops
+    c2_program: cobaltstrike
+    c2_log_type: weblog
+    infralogtype: c2
+  fields_under_root: false
+
+# Cobalt Strike Downloads Log
+- type: log
+  enabled: true
+  paths:
+    - /opt/cobaltstrike/logs/*/downloads.log
+  fields:
+    logtype: rtops
+    c2_program: cobaltstrike
+    c2_log_type: downloads
+    infralogtype: c2
+  fields_under_root: false
+
+# Cobalt Strike Keystrokes Log
+- type: log
+  enabled: true
+  paths:
+    - /opt/cobaltstrike/logs/*/keystrokes.log
+  fields:
+    logtype: rtops
+    c2_program: cobaltstrike
+    c2_log_type: keystrokes
+    infralogtype: c2
+  fields_under_root: false
+
+# Cobalt Strike Screenshots Log (CS 4.2+)
+- type: log
+  enabled: true
+  paths:
+    - /opt/cobaltstrike/logs/*/screenshots.log
+  fields:
+    logtype: rtops
+    c2_program: cobaltstrike
+    c2_log_type: screenshots
+    infralogtype: c2
+  fields_under_root: false
+
+# Output to RedELK Logstash
+output.logstash:
+  hosts: ["REDELK_SERVER_IP:5044"]
+  ssl.enabled: true
+  ssl.certificate_authorities: ["/etc/filebeat/redelkCA.crt"]
+  ssl.verification_mode: none
+  bulk_max_size: 2048
+
+# Processors
+processors:
+  - add_host_metadata:
+      when.not.contains:
+        tags: forwarded
+  - add_docker_metadata: ~
+  - add_fields:
+      target: ''
+      fields:
+        attack_scenario: "${SCENARIO_NAME:default}"
+        teamserver_name: "${HOSTNAME}"
+
+# Logging
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644
+
+# Monitoring (optional)
+monitoring.enabled: false
+monitoring.elasticsearch:
+  hosts: ["REDELK_SERVER_IP:9200"]

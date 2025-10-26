@@ -1,0 +1,47 @@
+# Filebeat Configuration for HAProxy Redirector
+# Ships HAProxy logs to RedELK
+
+filebeat.inputs:
+# HAProxy Logs with RedELK format
+- type: log
+  enabled: true
+  paths:
+    - /var/log/haproxy.log
+  fields:
+    infralogtype: redirtraffic
+    redirprogram: haproxy
+  fields_under_root: false
+
+# Output to RedELK Logstash
+output.logstash:
+  hosts: ["REDELK_SERVER_IP:5044"]
+  ssl.enabled: true
+  ssl.certificate_authorities: ["/etc/filebeat/redelkCA.crt"]
+  ssl.verification_mode: none
+  bulk_max_size: 2048
+
+# Processors
+processors:
+  - add_host_metadata:
+      when.not.contains:
+        tags: forwarded
+  - add_fields:
+      target: ''
+      fields:
+        redir_name: "${HOSTNAME}"
+        attack_scenario: "${SCENARIO_NAME:default}"
+
+# Include only HAProxy traffic logs
+include_lines: ['frontend', 'backend']
+
+# Exclude health checks
+exclude_lines: ['ELB-HealthChecker', 'Amazon-Route53-Health-Check', 'check backend']
+
+# Logging
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644

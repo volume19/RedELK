@@ -1,0 +1,55 @@
+# Filebeat Configuration for Nginx Redirector
+# Ships Nginx access logs to RedELK
+
+filebeat.inputs:
+# Nginx Access Logs with RedELK format
+- type: log
+  enabled: true
+  paths:
+    - /var/log/nginx/access-redelk.log
+  fields:
+    infralogtype: redirtraffic
+    redirprogram: nginx
+  fields_under_root: false
+
+# Nginx SSL Access Logs
+- type: log
+  enabled: true
+  paths:
+    - /var/log/nginx/ssl_access-redelk.log
+  fields:
+    infralogtype: redirtraffic
+    redirprogram: nginx
+    ssl: true
+  fields_under_root: false
+
+# Output to RedELK Logstash
+output.logstash:
+  hosts: ["REDELK_SERVER_IP:5044"]
+  ssl.enabled: true
+  ssl.certificate_authorities: ["/etc/filebeat/redelkCA.crt"]
+  ssl.verification_mode: none
+  bulk_max_size: 2048
+
+# Processors
+processors:
+  - add_host_metadata:
+      when.not.contains:
+        tags: forwarded
+  - add_fields:
+      target: ''
+      fields:
+        redir_name: "${HOSTNAME}"
+        attack_scenario: "${SCENARIO_NAME:default}"
+
+# Exclude lines
+exclude_lines: ['^#', '^$', 'ELB-HealthChecker', 'Amazon-Route53-Health-Check']
+
+# Logging
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 7
+  permissions: 0644

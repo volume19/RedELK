@@ -1,0 +1,50 @@
+{
+  "index_patterns": ["rtops-*"],
+  "template": {
+    "settings": {
+      "index": {
+        "number_of_shards": 1,
+        "number_of_replicas": 0,
+        "refresh_interval": "5s"
+      }
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "message": { "type": "text" },
+        "c2.program": { "type": "keyword" },
+        "c2.log_type": { "type": "keyword" },
+        "c2.operator": { "type": "keyword" },
+        "c2.teamserver": { "type": "keyword" },
+        "beacon.id": { "type": "keyword" },
+        "beacon.name": { "type": "keyword" },
+        "beacon.hostname": { "type": "keyword" },
+        "beacon.os": { "type": "keyword" },
+        "beacon.user": { "type": "keyword" },
+        "beacon.process": { "type": "keyword" },
+        "beacon.pid": { "type": "integer" },
+        "beacon.internal_ip": { "type": "ip" },
+        "beacon.external_ip": { "type": "ip" },
+        "beacon.sleep": { "type": "integer" },
+        "beacon.jitter": { "type": "integer" },
+        "beacon.last_checkin": { "type": "date" },
+        "beacon.note": { "type": "text" },
+        "command.input": { "type": "text" },
+        "command.output": { "type": "text" },
+        "command.type": { "type": "keyword" },
+        "file.path": { "type": "text" },
+        "file.size": { "type": "long" },
+        "file.hash.md5": { "type": "keyword" },
+        "file.hash.sha256": { "type": "keyword" },
+        "screenshot.title": { "type": "text" },
+        "screenshot.user": { "type": "keyword" },
+        "keystrokes.title": { "type": "text" },
+        "keystrokes.data": { "type": "text" },
+        "attack.technique": { "type": "keyword" },
+        "attack.tactic": { "type": "keyword" },
+        "scenario": { "type": "keyword" },
+        "tags": { "type": "keyword" }
+      }
+    }
+  }
+}

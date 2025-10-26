@@ -18,7 +18,9 @@
       "Bash(git commit:*)",
       "Bash(git push:*)",
       "Bash(find:*)",
-      "Bash(bash -n:*)"
+      "Bash(bash -n:*)",
+      "Bash(docker logs:*)",
+      "Bash(git ls-tree:*)"
     ],
     "deny": [],
     "ask": []
