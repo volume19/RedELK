@@ -1,8 +1,8 @@
 # RedELK Deployment Script Verification
 
-## ALL 10 PRODUCTION FIXES VERIFIED IN redelk_ubuntu_deploy.sh
+## ALL 10 PRODUCTION FIXES VERIFIED + 10 ADDITIONAL CRITICAL FIXES APPLIED
 
-This document verifies that ALL fixes from DIAGNOSE-AND-FIX.sh are present in the main deployment script.
+This document verifies that ALL fixes from DIAGNOSE-AND-FIX.sh are present in the main deployment script, plus 10 additional critical production fixes for idempotency and stability.
 
 ---
 
@@ -215,14 +215,121 @@ chmod 640 "${KIBANA_CONFIG_DIR}/kibana.yml" || true
 
 ---
 
+---
+
+## 🔧 10 ADDITIONAL CRITICAL PRODUCTION FIXES (APPLIED)
+
+### Fix 1: Unbound Variable in Systemd ✅
+**Issue**: `LS_ES_API_KEY: unbound variable` caused immediate deployment failure
+**Solution**: Changed systemd service to use `EnvironmentFile` instead of inline Environment variable
+**Location**: Line 589 in redelk_ubuntu_deploy.sh
+```systemd
+EnvironmentFile=${REDELK_PATH}/elkserver/docker/.env
+```
+
+### Fix 2: Persist Logstash API Key ✅
+**Issue**: API key only exported to shell, lost on systemd restart
+**Solution**: Write API key to .env file for persistence
+**Location**: Lines 512-514 in redelk_ubuntu_deploy.sh
+```bash
+sed -i "/^LS_ES_API_KEY=/d" "${REDELK_PATH}/elkserver/docker/.env" 2>/dev/null || true
+printf "LS_ES_API_KEY=%s\n" "$LS_ES_API_KEY" >> "${REDELK_PATH}/elkserver/docker/.env"
+```
+
+### Fix 3: Idempotent Kibana Token Creation ✅
+**Issue**: Named token creation failed with 409 conflict on re-runs
+**Solution**: DELETE existing token before creating new one
+**Location**: Lines 536-538 in redelk_ubuntu_deploy.sh
+```bash
+curl -sS -u "elastic:${ELASTIC_PASSWORD}" \
+    -X DELETE "http://127.0.0.1:9200/_security/service/elastic/kibana/credential/token/redelk" >/dev/null 2>&1 || true
+```
+
+### Fix 4: Remove Compose Version Warning ✅
+**Issue**: `version: "3.9"` deprecated in Docker Compose v2
+**Solution**: Removed version field from docker-compose.yml
+**Location**: Line 326 in redelk_ubuntu_deploy.sh
+
+### Fix 5: ES Certs Mount Removed ✅
+**Issue**: AccessDeniedException when ES tried to access bind-mounted certs with uid 1000
+**Solution**: Only mount elasticsearch-data, certs not needed
+**Location**: Line 348 in redelk_ubuntu_deploy.sh
+```yaml
+volumes:
+  - ${REDELK_PATH}/elasticsearch-data:/usr/share/elasticsearch/data
+```
+
+### Fix 6: Logstash API Key Authentication ✅
+**Issue**: Using logstash_system user (monitoring only, can't write indices)
+**Solution**: Use API key with proper write privileges
+**Location**: Lines 487-517, 479 in redelk_ubuntu_deploy.sh
+```ruby
+output {
+  elasticsearch {
+    api_key  => "${LS_ES_API_KEY}"
+  }
+}
+```
+
+### Fix 7: Truthful Status Indicators ✅
+**Issue**: Hardcoded ✓ symbols regardless of actual status
+**Solution**: Conditional indicators based on real connectivity checks
+**Location**: Lines 997-1022 in redelk_ubuntu_deploy.sh
+```bash
+if curl -s -u "elastic:${ELASTIC_PASSWORD}" http://127.0.0.1:9200 >/dev/null 2>&1; then
+    echo "✓ OK"
+else
+    echo "✗ FAIL"
+fi
+```
+
+### Fix 8: Nginx Startup Deadlock Prevention ✅
+**Issue**: `service_healthy` blocks Nginx indefinitely on transient Kibana unhealthy states
+**Solution**: Changed to `service_started` for Nginx dependency
+**Location**: Lines 410-412 in redelk_ubuntu_deploy.sh
+```yaml
+depends_on:
+  kibana:
+    condition: service_started
+```
+
+### Fix 9: UFW Firewall Port Opening ✅
+**Issue**: Ports 80/443 blocked by UFW preventing external access
+**Solution**: Detect and open ports when UFW is active
+**Location**: Lines 604-610 in redelk_ubuntu_deploy.sh
+```bash
+if command -v ufw >/dev/null 2>&1 && ufw status | grep -q "Status: active"; then
+    ufw allow 80/tcp >/dev/null 2>&1 || true
+    ufw allow 443/tcp >/dev/null 2>&1 || true
+fi
+```
+
+### Fix 10: Correct Execution Order ✅
+**Issue**: Logstash might start before API key provisioned
+**Solution**: Provision API key before starting Logstash
+**Location**: Lines 640-645 in redelk_ubuntu_deploy.sh
+```bash
+provision_logstash_api_key
+provision_kibana_service_token
+
+echo ""
+echo "[INFO] Starting Logstash..."
+$COMPOSE_CMD up -d logstash
+```
+
+---
+
 ## Conclusion
 
-**ALL 10 PRODUCTION FIXES ARE PRESENT IN redelk_ubuntu_deploy.sh**
+**ALL 20 PRODUCTION FIXES ARE PRESENT IN redelk_ubuntu_deploy.sh**
 
 The main deployment script is production-ready and includes:
-- All fixes from DIAGNOSE-AND-FIX.sh
+- All 10 fixes from DIAGNOSE-AND-FIX.sh
+- All 10 additional critical production fixes for idempotency
 - Complete deployment package generation
 - Proper IP replacement in filebeat configs
 - Automated deployment scripts for C2 and redirectors
+- Full systemd integration with persistence
+- Comprehensive error handling and validation
 
-**NO ADDITIONAL CHANGES NEEDED**
+**DEPLOYMENT SCRIPT IS PRODUCTION-READY**
