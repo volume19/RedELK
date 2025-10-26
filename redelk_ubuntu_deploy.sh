@@ -290,6 +290,9 @@ EOF
 fix_permissions() {
     echo "[INFO] Fixing permissions on bind-mounted paths..."
 
+    # Make base directory and package directories accessible
+    chmod 755 "${REDELK_PATH}"
+
     for d in \
         "${REDELK_PATH}/certs" \
         "${REDELK_PATH}/elkserver/nginx" \
@@ -891,6 +894,11 @@ EOF
     chmod +x "${c2_pkg}/deploy-filebeat-c2.sh"
     tar czf "${REDELK_PATH}/c2servers.tgz" -C "${REDELK_PATH}" c2package
     chmod 644 "${REDELK_PATH}/c2servers.tgz"
+
+    # Make accessible: copy to /tmp for easy download
+    cp "${REDELK_PATH}/c2servers.tgz" /tmp/c2servers.tgz
+    chmod 644 /tmp/c2servers.tgz
+
     rm -rf "${c2_pkg}"
 
     local redir_pkg="${REDELK_PATH}/redirpackage"
@@ -951,11 +959,16 @@ EOF
     chmod +x "${redir_pkg}/deploy-filebeat-redir.sh"
     tar czf "${REDELK_PATH}/redirs.tgz" -C "${REDELK_PATH}" redirpackage
     chmod 644 "${REDELK_PATH}/redirs.tgz"
+
+    # Make accessible: copy to /tmp for easy download
+    cp "${REDELK_PATH}/redirs.tgz" /tmp/redirs.tgz
+    chmod 644 /tmp/redirs.tgz
+
     rm -rf "${redir_pkg}"
 
     echo "[INFO] Deployment packages created:"
-    echo "  C2 Servers: ${REDELK_PATH}/c2servers.tgz"
-    echo "  Redirectors: ${REDELK_PATH}/redirs.tgz"
+    echo "  C2 Servers: ${REDELK_PATH}/c2servers.tgz (also at /tmp/c2servers.tgz)"
+    echo "  Redirectors: ${REDELK_PATH}/redirs.tgz (also at /tmp/redirs.tgz)"
     echo ""
     if [[ "$server_ip" == "REDELK_SERVER_IP" ]]; then
         echo "[WARN] Using placeholder IP - update filebeat configs manually"
@@ -1043,14 +1056,18 @@ print_summary() {
     echo "  C2 Servers: ${REDELK_PATH}/c2servers.tgz"
     echo "  Redirectors: ${REDELK_PATH}/redirs.tgz"
     echo ""
+    echo "Public copies available for easy download:"
+    echo "  /tmp/c2servers.tgz"
+    echo "  /tmp/redirs.tgz"
+    echo ""
     echo "Deploy to C2 server:"
-    echo "  scp ${REDELK_PATH}/c2servers.tgz user@c2-server:/tmp/"
+    echo "  scp /tmp/c2servers.tgz user@c2-server:/tmp/"
     echo "  ssh user@c2-server"
     echo "  cd /tmp && tar xzf c2servers.tgz && cd c2package"
     echo "  sudo bash deploy-filebeat-c2.sh"
     echo ""
     echo "Deploy to redirector:"
-    echo "  scp ${REDELK_PATH}/redirs.tgz user@redirector:/tmp/"
+    echo "  scp /tmp/redirs.tgz user@redirector:/tmp/"
     echo "  ssh user@redirector"
     echo "  cd /tmp && tar xzf redirs.tgz && cd redirpackage"
     echo "  sudo bash deploy-filebeat-redir.sh"
