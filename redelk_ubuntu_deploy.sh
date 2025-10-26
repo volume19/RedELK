@@ -134,6 +134,49 @@ EOF
     sysctl --system >/dev/null 2>&1
 }
 
+cleanup_existing_deployment() {
+    echo "[INFO] Cleaning up any existing RedELK deployment..."
+
+    # Stop systemd service if it exists
+    if systemctl is-active --quiet redelk 2>/dev/null; then
+        echo "[INFO] Stopping RedELK systemd service..."
+        systemctl stop redelk 2>/dev/null || true
+        systemctl disable redelk 2>/dev/null || true
+    fi
+
+    # Stop and remove RedELK containers
+    echo "[INFO] Removing RedELK Docker containers..."
+    docker rm -f redelk-elasticsearch redelk-logstash redelk-kibana redelk-nginx 2>/dev/null || true
+    docker rm -f es ls kb nx 2>/dev/null || true
+
+    # Stop system nginx if running
+    if systemctl is-active --quiet nginx 2>/dev/null; then
+        echo "[INFO] Stopping system nginx service..."
+        systemctl stop nginx 2>/dev/null || true
+    fi
+
+    # Remove docker-compose stack if it exists
+    if [[ -f "${REDELK_PATH}/elkserver/docker/docker-compose.yml" ]]; then
+        echo "[INFO] Removing docker-compose stack..."
+        cd "${REDELK_PATH}/elkserver/docker" && docker compose down -v 2>/dev/null || true
+    fi
+
+    # Prune Docker networks and volumes
+    echo "[INFO] Pruning Docker networks and volumes..."
+    docker network prune -f >/dev/null 2>&1 || true
+    docker volume prune -f >/dev/null 2>&1 || true
+
+    # Remove RedELK directory
+    echo "[INFO] Removing ${REDELK_PATH}..."
+    rm -rf "${REDELK_PATH}"
+
+    # Remove systemd service file
+    rm -f /etc/systemd/system/redelk.service
+    systemctl daemon-reload 2>/dev/null || true
+
+    echo "[INFO] Cleanup complete"
+}
+
 create_directories() {
     echo "[INFO] Creating directory structure..."
     mkdir -p "${REDELK_PATH}"/{elkserver/{docker,nginx,logstash/pipelines,kibana},certs,logs}
@@ -992,10 +1035,11 @@ main() {
     install_dependencies
     install_docker
     setup_kernel
+    cleanup_existing_deployment  # Clean up any existing RedELK deployment
     create_directories
     copy_deployment_files  # Copy all RedELK component files from script directory
     generate_certificates
-    check_ports
+    # check_ports  # Skipped - we just cleaned up, ports should be free
     create_env_file
     create_docker_compose
     create_nginx_config

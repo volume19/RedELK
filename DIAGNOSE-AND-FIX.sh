@@ -13,11 +13,32 @@ echo ""
 
 # AGGRESSIVE CLEANUP
 echo "Cleaning everything..."
+
+# Stop systemd service if it exists
+systemctl stop redelk 2>/dev/null || true
+systemctl disable redelk 2>/dev/null || true
+
+# Stop and remove RedELK containers
+docker rm -f redelk-elasticsearch redelk-logstash redelk-kibana redelk-nginx 2>/dev/null || true
+docker rm -f es ls kb nx 2>/dev/null || true
+
+# Stop system nginx
+systemctl stop nginx 2>/dev/null || true
+
+# Remove all containers (aggressive)
 docker rm -f $(docker ps -aq) 2>/dev/null || true
+
+# Prune networks and volumes
 docker network prune -f >/dev/null 2>&1
 docker volume prune -f >/dev/null 2>&1
-systemctl stop nginx 2>/dev/null || true
+
+# Remove RedELK directory
 rm -rf "$P"
+
+# Remove systemd service file
+rm -f /etc/systemd/system/redelk.service
+systemctl daemon-reload 2>/dev/null || true
+
 echo "Clean"
 echo ""
 
