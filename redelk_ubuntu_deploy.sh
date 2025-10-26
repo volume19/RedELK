@@ -465,23 +465,57 @@ provision_kibana_service_token() {
     echo "[INFO] Provisioning Kibana service account token and config..."
     mkdir -p "${KIBANA_CONFIG_DIR}"
 
-    # Delete existing token if it exists
-    echo "[INFO] Removing existing service token if present..."
-    curl -sS -u "elastic:${ELASTIC_PASSWORD}" \
-        -X DELETE "http://127.0.0.1:9200/_security/service/elastic/kibana/credential/token/redelk" 2>/dev/null || true
-
-    # Create new token via Elasticsearch Security API (requires elastic superuser).
-    local response
-    local token
-    response="$(curl -sS -u "elastic:${ELASTIC_PASSWORD}" \
+    # Check if token already exists and is valid
+    echo "[INFO] Checking existing service token..."
+    local existing_token
+    existing_token="$(curl -sS -u "elastic:${ELASTIC_PASSWORD}" \
         -H 'Content-Type: application/json' \
-        -X POST "http://127.0.0.1:9200/_security/service/elastic/kibana/credential/token/redelk" 2>&1)"
-    token="$(echo "$response" | jq -r '.token.value' 2>/dev/null || true)"
-    if [[ -z "${token}" || "${token}" == "null" ]]; then
-        echo "[ERROR] Failed to create Kibana service account token"
-        echo "[DEBUG] API response: $response"
-        docker logs redelk-elasticsearch --tail 200 || true
-        exit 1
+        -X GET "http://127.0.0.1:9200/_security/service/elastic/kibana/credential/token/redelk" 2>/dev/null | \
+        jq -r '.token.value' 2>/dev/null || true)"
+
+    if [[ -n "${existing_token}" && "${existing_token}" != "null" ]]; then
+        echo "[INFO] Valid service token already exists"
+        token="$existing_token"
+    else
+        echo "[INFO] Creating new service token..."
+
+        # Force delete the token first (ignore errors)
+        curl -sS -u "elastic:${ELASTIC_PASSWORD}" \
+            -X DELETE "http://127.0.0.1:9200/_security/service/elastic/kibana/credential/token/redelk" 2>/dev/null || true
+
+        # Wait a moment for deletion to propagate
+        sleep 2
+
+        # Create new token via Elasticsearch Security API
+        local response
+        response="$(curl -sS -u "elastic:${ELASTIC_PASSWORD}" \
+            -H 'Content-Type: application/json' \
+            -X POST "http://127.0.0.1:9200/_security/service/elastic/kibana/credential/token/redelk" 2>&1)"
+
+        token="$(echo "$response" | jq -r '.token.value' 2>/dev/null || true)"
+
+        if [[ -z "${token}" || "${token}" == "null" ]]; then
+            echo "[ERROR] Failed to create Kibana service account token"
+            echo "[DEBUG] API response: $response"
+
+            # Try alternative approach - use direct API call
+            echo "[INFO] Attempting alternative token creation method..."
+            response="$(curl -sS -u "elastic:${ELASTIC_PASSWORD}" \
+                -H 'Content-Type: application/json' \
+                -d '{"name": "redelk-token"}' \
+                -X POST "http://127.0.0.1:9200/_security/service/elastic/kibana/credential/token" 2>&1)"
+
+            token="$(echo "$response" | jq -r '.token.value' 2>/dev/null || true)"
+
+            if [[ -z "${token}" || "${token}" == "null" ]]; then
+                echo "[ERROR] All token creation methods failed"
+                echo "[DEBUG] Final API response: $response"
+                docker logs redelk-elasticsearch --tail 200 || true
+                exit 1
+            fi
+        fi
+
+        echo "[INFO] Service token created successfully"
     fi
     cat > "${KIBANA_CONFIG_DIR}/kibana.yml" <<EOF
 server.name: "kibana"
@@ -711,19 +745,30 @@ deploy_helper_scripts() {
 create_deployment_packages() {
     echo "[INFO] Creating deployment packages..."
 
-    # C2 servers package
-    local c2_pkg="${REDELK_PATH}/c2package"
-    mkdir -p "${c2_pkg}"
-    cp "${REDELK_PATH}/certs/redelkCA.crt" "${c2_pkg}/"
-    cp "${REDELK_PATH}/certs/sshkey" "${c2_pkg}/"
-
     # Get server IP for replacing in configs
     local server_ip=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
     if [ -z "$server_ip" ]; then
-        echo "[WARNING] Could not detect server IP, using placeholder"
+        echo "[ERROR] Could not detect server IP"
+        echo "[INFO] Available network interfaces:"
+        ip -4 addr show | grep -E "inet\s" || true
+        echo ""
+        echo "[INFO] Please ensure the server has a valid IPv4 address"
+        echo "[INFO] You can manually specify the IP in the config files after deployment"
         server_ip="REDELK_SERVER_IP"
     else
-        echo "[INFO] Using server IP: $server_ip for filebeat configs"
+        echo "[INFO] Detected server IP: $server_ip"
+    fi
+
+    # C2 servers package
+    local c2_pkg="${REDELK_PATH}/c2package"
+    mkdir -p "${c2_pkg}"
+
+    # Copy certificates
+    if [[ -f "${REDELK_PATH}/certs/redelkCA.crt" ]]; then
+        cp "${REDELK_PATH}/certs/redelkCA.crt" "${c2_pkg}/"
+    fi
+    if [[ -f "${REDELK_PATH}/certs/sshkey" ]]; then
+        cp "${REDELK_PATH}/certs/sshkey" "${c2_pkg}/"
     fi
 
     # Add C2 Filebeat configurations with IP replacement
@@ -731,34 +776,160 @@ create_deployment_packages() {
     if ls "${REDELK_PATH}/c2servers/"*.yml >/dev/null 2>&1; then
         for config in "${REDELK_PATH}/c2servers/"*.yml; do
             local filename=$(basename "$config")
-            sed "s/REDELK_SERVER_IP/${server_ip}/g" "$config" > "${c2_pkg}/filebeat/${filename}"
+            if [[ "$server_ip" != "REDELK_SERVER_IP" ]]; then
+                sed "s/REDELK_SERVER_IP/${server_ip}/g" "$config" > "${c2_pkg}/filebeat/${filename}"
+                echo "[INFO] Updated $filename with server IP: $server_ip"
+            else
+                cp "$config" "${c2_pkg}/filebeat/${filename}"
+                echo "[WARN] Using placeholder in $filename - update manually with actual IP"
+            fi
         done
     fi
 
+    # Create deployment script for C2 servers
+    cat > "${c2_pkg}/deploy-filebeat-c2.sh" <<'EOF'
+#!/bin/bash
+# RedELK Filebeat Deployment Script - C2 Servers
+echo "Deploying RedELK filebeat agent for C2 server..."
+
+# Install filebeat if not present
+if ! command -v filebeat &>/dev/null; then
+    curl -L -O https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-8.15.3-amd64.deb
+    dpkg -i filebeat-8.15.3-amd64.deb
+    rm -f filebeat-8.15.3-amd64.deb
+fi
+
+# Stop existing filebeat
+systemctl stop filebeat 2>/dev/null || true
+
+# Backup existing config
+[[ -f /etc/filebeat/filebeat.yml ]] && cp /etc/filebeat/filebeat.yml /etc/filebeat/filebeat.yml.backup.$(date +%s)
+
+# Copy RedELK config
+cp filebeat/filebeat-cobaltstrike.yml /etc/filebeat/filebeat.yml
+
+# Copy certificates if available
+[[ -f redelkCA.crt ]] && mkdir -p /etc/filebeat/certs && cp redelkCA.crt /etc/filebeat/certs/
+[[ -f sshkey ]] && cp sshkey /etc/filebeat/certs/ && chmod 600 /etc/filebeat/certs/sshkey
+
+# Update log paths for actual Cobalt Strike installation
+CS_PATH="/opt/cobaltstrike"
+if [[ -d "$CS_PATH/logs" ]]; then
+    sed -i "s|/opt/cobaltstrike/logs|$CS_PATH/logs|g" /etc/filebeat/filebeat.yml
+elif [[ -d "$CS_PATH/server/logs" ]]; then
+    sed -i "s|/opt/cobaltstrike/logs|$CS_PATH/server/logs|g" /etc/filebeat/filebeat.yml
+elif [[ -d "$HOME/cobaltstrike_3/cobaltstrike/cobaltstrike/server/logs" ]]; then
+    sed -i "s|/opt/cobaltstrike/logs|$HOME/cobaltstrike_3/cobaltstrike/cobaltstrike/server/logs|g" /etc/filebeat/filebeat.yml
+fi
+
+# Set permissions
+chmod 600 /etc/filebeat/filebeat.yml
+
+# Test configuration
+filebeat test config || exit 1
+
+# Start service
+systemctl enable filebeat
+systemctl restart filebeat
+
+echo "Filebeat deployment complete!"
+echo "Check status: systemctl status filebeat"
+EOF
+
+    chmod +x "${c2_pkg}/deploy-filebeat-c2.sh"
+
+    # Create the tarball
     tar czf "${REDELK_PATH}/c2servers.tgz" -C "${REDELK_PATH}" c2package
-    chmod 644 "${REDELK_PATH}/c2servers.tgz"  # Make world-readable for easy transfer
+    chmod 644 "${REDELK_PATH}/c2servers.tgz"
     rm -rf "${c2_pkg}"
 
     # Redirectors package
     local redir_pkg="${REDELK_PATH}/redirpackage"
     mkdir -p "${redir_pkg}"
-    cp "${REDELK_PATH}/certs/redelkCA.crt" "${redir_pkg}/"
-    cp "${REDELK_PATH}/certs/elkserver.crt" "${redir_pkg}/"
+
+    # Copy certificates
+    if [[ -f "${REDELK_PATH}/certs/redelkCA.crt" ]]; then
+        cp "${REDELK_PATH}/certs/redelkCA.crt" "${redir_pkg}/"
+    fi
+    if [[ -f "${REDELK_PATH}/certs/elkserver.crt" ]]; then
+        cp "${REDELK_PATH}/certs/elkserver.crt" "${redir_pkg}/"
+    fi
 
     # Add redirector Filebeat configurations with IP replacement
     mkdir -p "${redir_pkg}/filebeat"
     if ls "${REDELK_PATH}/redirs/"*.yml >/dev/null 2>&1; then
         for config in "${REDELK_PATH}/redirs/"*.yml; do
             local filename=$(basename "$config")
-            sed "s/REDELK_SERVER_IP/${server_ip}/g" "$config" > "${redir_pkg}/filebeat/${filename}"
+            if [[ "$server_ip" != "REDELK_SERVER_IP" ]]; then
+                sed "s/REDELK_SERVER_IP/${server_ip}/g" "$config" > "${redir_pkg}/filebeat/${filename}"
+                echo "[INFO] Updated $filename with server IP: $server_ip"
+            else
+                cp "$config" "${redir_pkg}/filebeat/${filename}"
+                echo "[WARN] Using placeholder in $filename - update manually with actual IP"
+            fi
         done
     fi
 
+    # Create deployment script for redirectors
+    cat > "${redir_pkg}/deploy-filebeat-redir.sh" <<'EOF'
+#!/bin/bash
+# RedELK Filebeat Deployment Script - Redirectors
+echo "Deploying RedELK filebeat agent for redirector..."
+
+# Install filebeat if not present
+if ! command -v filebeat &>/dev/null; then
+    curl -L -O https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-8.15.3-amd64.deb
+    dpkg -i filebeat-8.15.3-amd64.deb
+    rm -f filebeat-8.15.3-amd64.deb
+fi
+
+# Stop existing filebeat
+systemctl stop filebeat 2>/dev/null || true
+
+# Backup existing config
+[[ -f /etc/filebeat/filebeat.yml ]] && cp /etc/filebeat/filebeat.yml /etc/filebeat/filebeat.yml.backup.$(date +%s)
+
+# Copy RedELK config (use nginx config)
+cp filebeat/filebeat-nginx.yml /etc/filebeat/filebeat.yml
+
+# Copy certificates if available
+[[ -f redelkCA.crt ]] && mkdir -p /etc/filebeat/certs && cp redelkCA.crt /etc/filebeat/certs/
+[[ -f elkserver.crt ]] && mkdir -p /etc/filebeat/certs && cp elkserver.crt /etc/filebeat/certs/
+
+# Set permissions
+chmod 600 /etc/filebeat/filebeat.yml
+
+# Test configuration
+filebeat test config || exit 1
+
+# Start service
+systemctl enable filebeat
+systemctl restart filebeat
+
+echo "Filebeat deployment complete!"
+echo "Check status: systemctl status filebeat"
+echo "View logs: journalctl -u filebeat -f"
+EOF
+
+    chmod +x "${redir_pkg}/deploy-filebeat-redir.sh"
+
+    # Create the tarball
     tar czf "${REDELK_PATH}/redirs.tgz" -C "${REDELK_PATH}" redirpackage
-    chmod 644 "${REDELK_PATH}/redirs.tgz"  # Make world-readable for easy transfer
+    chmod 644 "${REDELK_PATH}/redirs.tgz"
     rm -rf "${redir_pkg}"
 
-    echo "[INFO] Deployment packages created with RedELK server IP: ${server_ip}"
+    echo "[INFO] Deployment packages created:"
+    echo "  C2 Servers: ${REDELK_PATH}/c2servers.tgz"
+    echo "  Redirectors: ${REDELK_PATH}/redirs.tgz"
+    echo ""
+    if [[ "$server_ip" == "REDELK_SERVER_IP" ]]; then
+        echo "[WARN] Using placeholder IP - update filebeat configs manually"
+        echo "[INFO] Replace 'REDELK_SERVER_IP' with actual server IP in:"
+        echo "  c2servers.tgz → filebeat/*.yml"
+        echo "  redirs.tgz → filebeat/*.yml"
+    else
+        echo "[INFO] Server IP configured: $server_ip"
+    fi
 }
 
 print_summary() {

@@ -23,34 +23,33 @@ A comprehensive Red Team SIEM platform built on the Elastic Stack (Elasticsearch
 
 ## 🔧 Quick Installation
 
-### Option 1: Download Complete Bundle (Recommended)
+### Option 1: Diagnostic Deployment (Recommended for Testing)
 ```bash
-# Download the complete deployment bundle
-wget https://github.com/volume19/RedELK/releases/download/v3.0/redelk-v3-deployment.tar.gz
-
-# Extract and deploy
-tar xzf redelk-v3-deployment.tar.gz
-cd DEPLOYMENT-BUNDLE
-sudo bash install-redelk.sh
+# For quick testing or troubleshooting
+wget https://raw.githubusercontent.com/volume19/RedELK/master/DIAGNOSE-AND-FIX.sh
+sudo bash DIAGNOSE-AND-FIX.sh
 ```
+**Best for**: Quick testing, troubleshooting, development environments
 
-### Option 2: Clone Repository
+### Option 2: Full Production Deployment
 ```bash
 # Clone repository
 git clone https://github.com/volume19/RedELK.git
 cd RedELK
 
-# Use the main deployment script
+# Use the full deployment script
 sudo bash redelk_ubuntu_deploy.sh
 ```
+**Best for**: Production deployments with full features and monitoring
 
-### Option 3: Build Your Own Bundle
+### Option 3: Build Deployment Bundle
 ```bash
 # Clone and create deployment bundle
 git clone https://github.com/volume19/RedELK.git
 cd RedELK
 ./create-bundle.sh  # Creates redelk-v3-deployment.tar.gz
 ```
+**Best for**: Offline deployments or distributing to multiple servers
 
 ## 🎯 Post-Installation
 
@@ -73,13 +72,31 @@ sudo /opt/RedELK/scripts/test-data-generator.sh
 
 ## 📁 What's Included
 
-- **Main Script**: One-command deployment
+- **Deployment Scripts**:
+  - `DIAGNOSE-AND-FIX.sh` - Fast diagnostic deployment with all production fixes
+  - `redelk_ubuntu_deploy.sh` - Full production deployment with complete feature set
+  - `create-bundle.sh` - Bundle generator for offline deployments
 - **C2 Parsers**: Cobalt Strike, PoshC2
 - **Redirector Parsers**: Apache, Nginx, HAProxy
 - **Detection Rules**: Sandbox, TOR, VPN, Scanner detection
 - **Enrichment**: GeoIP, CDN detection, User Agent analysis
 - **Helper Scripts**: Health check, beacon manager, threat feed updater
 - **Dashboards**: Pre-built Kibana visualizations
+
+## ✨ Recent Improvements (v3.0.1)
+
+The `DIAGNOSE-AND-FIX.sh` script includes all production-ready fixes:
+
+1. **Kibana Service Account Token** - Uses proper authentication instead of elastic user
+2. **Kibana Health Checks** - Real health-gating prevents 502 errors
+3. **Logstash Pipeline Syntax** - Fixed configuration format for proper startup
+4. **Nginx Dependency Fix** - Allows Nginx to start while Kibana initializes
+5. **Nginx Configuration** - Clean, validated config with proper proxy settings
+6. **Bind-Mount ES Data** - Uses deterministic paths for easier management
+7. **Readiness Checks** - Replaces fixed sleeps with real service checks
+8. **Token Management** - Avoids 409 conflicts with unnamed tokens
+9. **File Permissions** - Ensures Kibana can read its configuration
+10. **ES Prerequisites** - Maintains proper vm.max_map_count and heap settings
 
 ## 🛡️ Security
 
