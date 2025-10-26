@@ -135,7 +135,11 @@ EOF
 }
 
 cleanup_existing_deployment() {
-    echo "[INFO] Cleaning up any existing RedELK deployment..."
+    echo ""
+    echo "========================================"
+    echo "CLEANUP - Removing existing deployment"
+    echo "========================================"
+    echo ""
 
     # Stop systemd service if it exists
     if systemctl is-active --quiet redelk 2>/dev/null; then
@@ -145,36 +149,43 @@ cleanup_existing_deployment() {
     fi
 
     # Stop and remove RedELK containers
-    echo "[INFO] Removing RedELK Docker containers..."
+    echo "[INFO] Removing RedELK containers..."
     docker rm -f redelk-elasticsearch redelk-logstash redelk-kibana redelk-nginx 2>/dev/null || true
     docker rm -f es ls kb nx 2>/dev/null || true
 
     # Stop system nginx if running
     if systemctl is-active --quiet nginx 2>/dev/null; then
-        echo "[INFO] Stopping system nginx service..."
+        echo "[INFO] Stopping system nginx..."
         systemctl stop nginx 2>/dev/null || true
     fi
 
     # Remove docker-compose stack if it exists
     if [[ -f "${REDELK_PATH}/elkserver/docker/docker-compose.yml" ]]; then
-        echo "[INFO] Removing docker-compose stack..."
+        echo "[INFO] Stopping docker-compose stack..."
         cd "${REDELK_PATH}/elkserver/docker" && docker compose down -v 2>/dev/null || true
     fi
 
-    # Prune Docker networks and volumes
+    # Prune Docker resources
     echo "[INFO] Pruning Docker networks and volumes..."
     docker network prune -f >/dev/null 2>&1 || true
     docker volume prune -f >/dev/null 2>&1 || true
 
     # Remove RedELK directory
-    echo "[INFO] Removing ${REDELK_PATH}..."
-    rm -rf "${REDELK_PATH}"
+    if [[ -d "${REDELK_PATH}" ]]; then
+        echo "[INFO] Removing ${REDELK_PATH}..."
+        rm -rf "${REDELK_PATH}"
+    fi
 
     # Remove systemd service file
-    rm -f /etc/systemd/system/redelk.service
-    systemctl daemon-reload 2>/dev/null || true
+    if [[ -f /etc/systemd/system/redelk.service ]]; then
+        echo "[INFO] Removing systemd service..."
+        rm -f /etc/systemd/system/redelk.service
+        systemctl daemon-reload 2>/dev/null || true
+    fi
 
     echo "[INFO] Cleanup complete"
+    echo "========================================"
+    echo ""
 }
 
 create_directories() {
@@ -605,60 +616,95 @@ EOF
 }
 
 start_stack() {
-    echo "[INFO] Starting RedELK stack..."
+    echo ""
+    echo "========================================"
+    echo "DEPLOYING REDELK STACK"
+    echo "========================================"
+    echo ""
+
     cd "${REDELK_PATH}/elkserver/docker"
     $COMPOSE_CMD down 2>/dev/null || true
+
     echo "[INFO] Pulling Docker images..."
     $COMPOSE_CMD pull
+
+    echo ""
     echo "[INFO] Starting Elasticsearch..."
     $COMPOSE_CMD up -d elasticsearch
-    echo "[INFO] Waiting for Elasticsearch to be ready..."
+
+    echo -n "[INFO] Waiting for Elasticsearch to be ready"
     local code
     local ok=false
     for ((i=1;i<=60;i++)); do
       code="$(curl -sS -u "elastic:${ELASTIC_PASSWORD}" -o /dev/null -w '%{http_code}' http://127.0.0.1:9200/_cluster/health || true)"
       if [[ "$code" == "200" ]]; then ok=true; break; fi
-      sleep 5; echo -n "."
+      sleep 3; echo -n "."
     done
-    echo ""
+    echo " ✓"
+
     if [[ "$ok" != "true" ]]; then
-      echo "[ERROR] Elasticsearch failed to become ready"
-      docker logs redelk-elasticsearch || true
+      echo ""
+      echo "[ERROR] Elasticsearch failed to start"
+      echo "[ERROR] Last 50 lines of logs:"
+      docker logs --tail=50 redelk-elasticsearch || true
       exit 1
     fi
-    echo "[INFO] Waiting for Elasticsearch cluster state to recover..."
+
+    echo "[INFO] Elasticsearch is healthy"
+
+    # Provision Kibana service token
+    provision_kibana_service_token
+
+    echo ""
+    echo "[INFO] Starting Logstash..."
+    $COMPOSE_CMD up -d logstash
+    sleep 5
+    echo "[INFO] Logstash started"
+
+    echo ""
+    echo "[INFO] Starting Kibana..."
+    $COMPOSE_CMD up -d kibana
+
+    echo -n "[INFO] Waiting for Kibana to be ready"
     ok=false
-    for ((i=1;i<=90;i++)); do
-      # Check cluster health with wait_for_no_initializing_shards to ensure cluster state is recovered
-      response="$(curl -sS -u "elastic:${ELASTIC_PASSWORD}" 'http://127.0.0.1:9200/_cluster/health?wait_for_no_initializing_shards=true&timeout=1s' 2>/dev/null || true)"
-      if echo "$response" | grep -q '"status"'; then
+    for ((i=1;i<=80;i++)); do
+      if curl -sS http://127.0.0.1:5601/api/status 2>/dev/null | grep -q '"level":"available"'; then
         ok=true
         break
       fi
-      sleep 2; echo -n "."
-    done
-    echo ""
-    if [[ "$ok" != "true" ]]; then
-      echo "[ERROR] Elasticsearch cluster state failed to recover"
-      docker logs redelk-elasticsearch || true
-      exit 1
-    fi
-    provision_kibana_service_token
-    echo "[INFO] Starting Kibana, Logstash, Nginx..."
-    $COMPOSE_CMD up -d kibana logstash nginx
-    echo "[INFO] Waiting for Kibana to be ready..."
-    ok=false
-    for ((i=1;i<=60;i++)); do
-      code="$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:5601/api/status || true)"
-      if [[ "$code" == "200" ]]; then ok=true; break; fi
       sleep 5; echo -n "."
     done
-    echo ""
+    echo " ✓"
+
     if [[ "$ok" != "true" ]]; then
-      echo "[WARN] Kibana not reporting 200; last logs:"
-      docker logs --tail=200 redelk-kibana || true
+      echo ""
+      echo "[WARN] Kibana may not be fully ready"
+      echo "[WARN] Last 50 lines of logs:"
+      docker logs --tail=50 redelk-kibana || true
+      echo ""
+      echo "[INFO] Continuing anyway - Kibana may still be initializing"
+    else
+      echo "[INFO] Kibana is ready"
     fi
-    echo "[INFO] Stack started successfully"
+
+    echo ""
+    echo "[INFO] Starting Nginx..."
+    $COMPOSE_CMD up -d nginx
+    sleep 3
+
+    # Validate Nginx
+    if docker exec redelk-nginx nginx -t >/dev/null 2>&1; then
+      echo "[INFO] Nginx configuration valid"
+    else
+      echo "[ERROR] Nginx configuration invalid"
+      docker exec redelk-nginx nginx -t
+      exit 1
+    fi
+
+    echo ""
+    echo "[INFO] All services started"
+    echo "========================================"
+    echo ""
 }
 
 deploy_elasticsearch_templates() {
@@ -979,51 +1025,110 @@ print_summary() {
     local server_ip=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1)
 
     echo ""
-    echo "================================================================"
-    echo "       RedELK v3.0 Installation Complete!"
-    echo "================================================================"
+    echo "========================================"
+    echo "FINAL STATUS CHECK"
+    echo "========================================"
     echo ""
-    echo "Access Kibana:"
+
+    # Container status
+    echo "Docker Containers:"
+    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}" --filter "name=redelk"
+    echo ""
+
+    # Count running services
+    local RUNNING=$(docker ps --filter "name=redelk" --format "{{.Names}}" | wc -l)
+    echo "Running: $RUNNING/4 services"
+
+    # Check for missing services
+    if [ "$RUNNING" -ne 4 ]; then
+        echo ""
+        echo "[ERROR] MISSING SERVICES - Checking why:"
+        for s in redelk-elasticsearch redelk-logstash redelk-kibana redelk-nginx; do
+            if ! docker ps --filter "name=${s}" --format "{{.Names}}" | grep -q "${s}"; then
+                echo ""
+                echo "=== $s crashed ==="
+                docker logs "$s" 2>&1 | tail -30
+            fi
+        done
+        echo ""
+        echo "[ERROR] Deployment incomplete - check logs above"
+        return 1
+    fi
+
+    # Connectivity tests
+    echo ""
+    echo "Testing connectivity..."
+    echo ""
+
+    echo -n "  Elasticsearch: "
+    if curl -s -u "elastic:${ELASTIC_PASSWORD}" http://127.0.0.1:9200 >/dev/null 2>&1; then
+        echo "✓ OK"
+    else
+        echo "✗ FAIL"
+    fi
+
+    echo -n "  Kibana: "
+    if curl -s http://127.0.0.1:5601/api/status >/dev/null 2>&1; then
+        echo "✓ OK"
+    else
+        echo "✗ FAIL"
+    fi
+
+    echo -n "  Nginx: "
+    if curl -s -k https://127.0.0.1 >/dev/null 2>&1; then
+        echo "✓ OK"
+    else
+        echo "✗ FAIL"
+    fi
+
+    echo -n "  Logstash (port 5044): "
+    if nc -zv 127.0.0.1 5044 2>&1 | grep -q succeeded || ss -ltn | grep -q ':5044'; then
+        echo "✓ OK"
+    else
+        echo "✗ FAIL"
+    fi
+
+    echo ""
+    echo "========================================"
+    echo "INSTALLATION COMPLETE"
+    echo "========================================"
+    echo ""
+    echo "Access RedELK:"
     echo "  URL: https://${server_ip}/"
     echo "  Username: elastic"
     echo "  Password: ${ELASTIC_PASSWORD}"
     echo ""
-    echo "Elasticsearch API:"
-    echo "  URL: http://${server_ip}:9200"
-    echo "  Username: elastic"
-    echo "  Password: ${ELASTIC_PASSWORD}"
-    echo ""
-    echo "Logstash Beats Input:"
-    echo "  Port: 5044 (for Filebeat agents)"
-    echo ""
-    echo "Deployment Packages:"
+    echo "Deployment Packages (with IP ${server_ip} configured):"
     echo "  C2 Servers: ${REDELK_PATH}/c2servers.tgz"
     echo "  Redirectors: ${REDELK_PATH}/redirs.tgz"
     echo ""
-    echo "Helper Scripts:"
-    echo "  ${REDELK_PATH}/scripts/redelk-health-check.sh - Check system health"
-    echo "  ${REDELK_PATH}/scripts/redelk-beacon-manager.sh - Manage beacons"
-    echo "  ${REDELK_PATH}/scripts/update-threat-feeds.sh - Update threat intel"
+    echo "Deploy to C2 server:"
+    echo "  scp ${REDELK_PATH}/c2servers.tgz user@c2-server:/tmp/"
+    echo "  ssh user@c2-server"
+    echo "  cd /tmp && tar xzf c2servers.tgz && cd c2package"
+    echo "  sudo bash deploy-filebeat.sh"
     echo ""
-    echo "Deployed Components:"
-    echo "  ✓ Elasticsearch index templates (rtops, redirtraffic, alarms)"
-    echo "  ✓ Logstash parsers for C2 and redirector logs"
-    echo "  ✓ GeoIP and threat detection enrichment modules"
-    echo "  ✓ Kibana dashboards and visualizations"
-    echo "  ✓ Automated threat feed updates (cron)"
+    echo "Deploy to redirector:"
+    echo "  scp ${REDELK_PATH}/redirs.tgz user@redirector:/tmp/"
+    echo "  ssh user@redirector"
+    echo "  cd /tmp && tar xzf redirs.tgz && cd redirpackage"
+    echo "  sudo bash deploy-filebeat.sh"
     echo ""
     echo "Service Management:"
     echo "  systemctl status redelk"
     echo "  systemctl restart redelk"
-    echo "  docker logs redelk-[elasticsearch|kibana|logstash|nginx]"
+    echo "  docker logs redelk-elasticsearch"
+    echo "  docker logs redelk-kibana"
+    echo "  docker logs redelk-logstash"
+    echo "  docker logs redelk-nginx"
     echo ""
-    echo "Next Steps:"
-    echo "  1. Deploy c2servers.tgz to your C2 servers"
-    echo "  2. Deploy redirs.tgz to your redirectors"
-    echo "  3. Configure Filebeat on each system with provided configs"
-    echo "  4. Access Kibana dashboard to monitor operations"
+    echo "Helper Scripts:"
+    echo "  ${REDELK_PATH}/scripts/redelk-health-check.sh"
+    echo "  ${REDELK_PATH}/scripts/verify-deployment.sh"
+    echo "  ${REDELK_PATH}/scripts/test-data-generator.sh"
     echo ""
     echo "Installation log: ${LOG_FILE}"
+    echo "========================================"
     echo ""
 }
 
