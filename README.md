@@ -81,14 +81,14 @@ sudo /opt/RedELK/scripts/test-data-generator.sh
 - **Helper Scripts**: Health check, beacon manager, threat feed updater
 - **Dashboards**: Pre-built Kibana visualizations
 
-## ✨ What's New in v3.0.5 (2025-10-27)
+## ✨ What's New in v3.0.6 (2025-10-27)
 
-**CRITICAL FIX**: Deployment script bash syntax error resolved + universal parsing
+**CRITICAL FIX**: Dashboard import fixed - no more 404 errors!
 
-### Latest Changes (v3.0.5)
-- **Fixed**: Bash syntax error in deployment script (duplicate code after heredoc EOF)
-- **Verified**: All functions and heredocs properly structured
-- **Tested**: Script passes bash syntax validation
+### Latest Changes (v3.0.6)
+- **Fixed**: Dashboard 404 errors when accessing Analytics -> Dashboards
+- **Root Cause**: Index pattern IDs didn't match dashboard references (rtops- vs rtops-*)
+- **Impact**: Dashboards now import successfully with all visualizations working
 
 ### The Complete Solution
 - **Flexible Field Support**: Works with BOTH nested `[infra][log][type]` AND flat `[fields][logtype]`
@@ -108,7 +108,8 @@ sudo /opt/RedELK/scripts/test-data-generator.sh
 - v3.0.2: Parsing but wrong fields
 - v3.0.3: Parsing with nested fields only
 - v3.0.4: Universal parsing - supports everything
-- v3.0.5: **Fixed deployment script syntax errors**
+- v3.0.5: Fixed deployment script syntax errors
+- v3.0.6: **Fixed dashboard import - index pattern IDs now match**
 
 See [CHANGELOG.md](CHANGELOG.md) for complete technical details.
 

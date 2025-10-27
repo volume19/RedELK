@@ -2,6 +2,51 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.0.6] - 2025-10-27
+
+### Summary
+**CRITICAL FIX**: Dashboard import - index pattern ID mismatch resolved
+
+### Fixed
+- **Dashboard 404 Error**: Fixed index pattern IDs to match dashboard references
+  - Root cause: Index patterns created with ID `rtops-` but dashboards reference `rtops-*`
+  - Dashboard import was failing because referenced index patterns didn't exist
+  - User saw "404 dashboard not found" when accessing Analytics -> Dashboards
+
+**Technical Details**:
+- OLD: `local pattern_id="${pattern/\*/}"` - removed asterisk from ID (rtops-* became rtops-)
+- NEW: `local pattern_id="${pattern}"` - keeps asterisk in ID (rtops-* stays rtops-*)
+- Dashboard references: `"id":"rtops-*"`, `"id":"redirtraffic-*"`, `"id":"alarms-*"`
+- Now creates index patterns with matching IDs
+
+**API Changes**:
+- Pass ID in request body instead of URL path to avoid encoding issues
+- Added `?overwrite=true` query parameter for idempotent deployments
+
+**Files Modified**:
+- `redelk_ubuntu_deploy.sh` - Lines 1121-1132: Fixed `deploy_kibana_dashboards()` function
+
+**Impact**:
+- ✅ Dashboards now import successfully
+- ✅ Index patterns properly linked to dashboard visualizations
+- ✅ No more 404 errors when accessing dashboards
+- ✅ All visualizations render correctly with data
+
+**For Existing Deployments**:
+Re-run deployment or manually fix:
+```bash
+# Delete old index patterns
+curl -X DELETE "http://localhost:5601/api/saved_objects/index-pattern/rtops-" \
+  -u "elastic:RedElk2024Secure" -H "kbn-xsrf: true"
+
+# Re-import dashboard (will auto-create correct index patterns)
+curl -X POST "http://localhost:5601/api/saved_objects/_import?overwrite=true" \
+  -u "elastic:RedElk2024Secure" -H "kbn-xsrf: true" \
+  -F "file=@/opt/RedELK/elkserver/kibana/dashboards/redelk-main-dashboard.ndjson"
+```
+
+---
+
 ## [3.0.5] - 2025-10-27
 
 ### Summary

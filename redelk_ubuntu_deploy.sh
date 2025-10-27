@@ -1121,12 +1121,13 @@ deploy_kibana_dashboards() {
         echo "[INFO] Creating index patterns..."
         for pattern in "rtops-*" "redirtraffic-*" "alarms-*"; do
             echo "[INFO] Creating index pattern: $pattern"
-            local pattern_id="${pattern/\*/}"
-            curl -sS -X POST "http://127.0.0.1:5601/api/saved_objects/index-pattern/${pattern_id}" \
+            # CRITICAL FIX: Keep asterisk in ID to match dashboard references (rtops-*, not rtops-)
+            # Pass ID in request body instead of URL path to avoid encoding issues
+            curl -sS -X POST "http://127.0.0.1:5601/api/saved_objects/index-pattern?overwrite=true" \
                 -u "elastic:${ELASTIC_PASSWORD}" \
                 -H "kbn-xsrf: true" \
                 -H "Content-Type: application/json" \
-                -d "{\"attributes\":{\"title\":\"${pattern}\",\"timeFieldName\":\"@timestamp\"}}" 2>&1 | \
+                -d "{\"attributes\":{\"title\":\"${pattern}\",\"timeFieldName\":\"@timestamp\"},\"id\":\"${pattern}\"}" 2>&1 | \
                 grep -q "\"id\"" && echo "[INFO] Created index pattern: $pattern" || echo "[INFO] Index pattern already exists: $pattern"
         done
 
