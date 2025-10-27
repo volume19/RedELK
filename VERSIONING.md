@@ -29,18 +29,31 @@ RedELK follows [Semantic Versioning](https://semver.org/) with the format `MAJOR
 
 ### v3.0.x Series - Elastic Stack 8.15.3
 
-#### v3.0.2 (2025-10-26)
-**CRITICAL HOTFIX: Logstash Parser Compatibility**
+#### v3.0.3 (2025-10-26)
+**ROOT CAUSE FIX: Deployment Script Includes Parsing**
 
-Fixed field structure mismatch preventing beacon log parsing:
+Deployment script now embeds complete Cobalt Strike parsing in main.conf:
+- Previous versions created main.conf with ONLY routing (no parsing!)
+- Parsing configs existed in conf.d/ but were never loaded by Logstash
+- v3.0.3 embeds full parser directly into main.conf
+- NEW deployments work immediately - no hotfixes needed
+- Parses: beacon logs, events, weblogs, downloads, keystrokes, screenshots
+- Compatible with official RedELK Filebeat field structure
+
+**Git Tag**: `v3.0.3`
+**Commit**: TBD
+
+#### v3.0.2 (2025-10-26)
+**Incomplete Fix** - Field structure updated but parsing still not working
+
+Fixed field references in conf.d/ files (but they weren't being loaded):
 - Updated Logstash parser to use official RedELK field structure
 - Changed from flat `[fields][logtype]` to nested `[infra][log][type]`
-- Now compatible with official RedELK v2 Filebeat configurations
-- Dashboards now populate correctly with beacon data
-- Includes hotfix script for existing deployments
+- However: These files in conf.d/ were never loaded by Logstash!
+- Dashboards still empty on deployed systems
 
 **Git Tag**: `v3.0.2`
-**Commit**: TBD
+**Commit**: 5fcec1e
 
 #### v3.0.1 (2025-10-26)
 **Production Hardening Release**

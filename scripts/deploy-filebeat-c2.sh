@@ -190,3 +190,4 @@ echo "  • Wait 2-3 minutes for logs to appear"
 echo "  • Check Kibana for rtops-* index"
 echo ""
 
+

@@ -81,22 +81,34 @@ sudo /opt/RedELK/scripts/test-data-generator.sh
 - **Helper Scripts**: Health check, beacon manager, threat feed updater
 - **Dashboards**: Pre-built Kibana visualizations
 
-## ✨ What's New in v3.0.2 (2025-10-26)
+## ✨ What's New in v3.0.3 (2025-10-26)
 
-**CRITICAL HOTFIX**: Logstash parser compatibility with official RedELK Filebeat configs
+**ROOT CAUSE FIX**: Deployment script now includes Cobalt Strike parsing in main.conf
 
-### Critical Fix
-- **Logstash Field Structure** - Fixed field path mismatch preventing beacon log parsing
-  - Updated from flat fields `[fields][logtype]` to nested `[infra][log][type]` structure
-  - Now compatible with official RedELK v2 Filebeat configurations
-  - Dashboards now populate correctly with beacon activity, commands, and events
-  - Hotfix script included: `HOTFIX-LOGSTASH-FIELDS.sh` for existing deployments
+### The Real Problem (Finally Fixed!)
+- **Previous versions (v3.0.1, v3.0.2)**: Deployment script created `main.conf` with NO parsing logic
+- **Only basic routing** - all Cobalt Strike logs stored as unparsed raw text
+- **Parsing configs existed** in `conf.d/` but were NEVER loaded by Logstash container
+- **v3.0.3 Fix**: Embeds complete Cobalt Strike parser directly into `main.conf`
 
-See [CHANGELOG.md](CHANGELOG.md) for complete details.
+### Impact
+- ✅ **NEW deployments work out of the box** - no hotfixes needed
+- ✅ Beacon logs parsed automatically: IDs, commands, operators, hostnames
+- ✅ Dashboards populate immediately with structured data
+- ✅ All log types supported: beacon, events, weblog, downloads, keystrokes, screenshots
+- ✅ Compatible with official RedELK Filebeat field structure
+
+### For Existing v3.0.1/v3.0.2 Users
+You need to redeploy or manually replace `/opt/RedELK/elkserver/logstash/pipelines/main.conf`
+
+See [CHANGELOG.md](CHANGELOG.md) for complete root cause analysis.
 
 ---
 
-## Previous Release: v3.0.1 (2025-10-26)
+## Previous Releases
+
+### v3.0.2 (2025-10-26)
+Field structure compatibility fix (incomplete - parsing still not working)
 
 Production-hardened release with critical fixes for reliability:
 
@@ -120,7 +132,7 @@ See [CHANGELOG.md](CHANGELOG.md) for complete details.
 
 RedELK follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
-- **Current Version**: v3.0.2 (see [VERSION](VERSION) file)
+- **Current Version**: v3.0.3 (see [VERSION](VERSION) file)
 - **Version History**: [CHANGELOG.md](CHANGELOG.md)
 - **Versioning Policy**: [VERSIONING.md](VERSIONING.md)
 

@@ -125,3 +125,4 @@ log_info "Logs being shipped:"
 echo "  • /var/log/nginx/access.log"
 echo "  • /var/log/nginx/error.log"
 echo ""
+

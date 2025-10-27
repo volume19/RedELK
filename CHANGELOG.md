@@ -2,6 +2,92 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.0.3] - 2025-10-26
+
+### Summary
+**ROOT CAUSE FIX**: Deployment script now includes Cobalt Strike parsing directly in main.conf. Previous versions had parsing configs in separate files that were never loaded by Logstash.
+
+---
+
+## Critical Fix: Deployment Script Missing Parsing Logic
+
+**THE ACTUAL ROOT CAUSE**:
+- The deployment script created `main.conf` with **ONLY basic routing logic**
+- Cobalt Strike parsing configs existed in `/elkserver/logstash/conf.d/` directory
+- But Logstash container **only loads from `/pipelines/main.conf`**
+- The `conf.d/` directory was **never mounted or loaded**
+- Result: **ZERO log parsing occurred** - all logs stored as raw unparsed text
+
+**What v3.0.2 Did** (incomplete fix):
+- Fixed field references in `/elkserver/logstash/conf.d/50-filter-c2-cobaltstrike.conf`
+- But this file **was never being used** by deployed systems!
+- Users with existing deployments still had empty dashboards
+
+**What v3.0.3 Does** (complete fix):
+- **Embeds full Cobalt Strike parsing directly into `main.conf`**
+- Deployment script now creates complete pipeline with parsing logic
+- No separate config files needed
+- New deployments work out of the box
+
+**Previous main.conf** (v3.0.1, v3.0.2):
+```ruby
+filter {
+  # Only basic index routing - NO PARSING AT ALL!
+  if [logtype] == "rtops" or [fields][logtype] == "rtops" {
+    mutate { add_field => { "[@metadata][index_prefix]" => "rtops" } }
+  }
+}
+```
+
+**New main.conf** (v3.0.3):
+```ruby
+filter {
+  # Full Cobalt Strike parsing included
+  if [infra][log][type] == "rtops" and [c2][program] == "cobaltstrike" {
+    if [c2][log][type] == "beacon" {
+      grok { ... }  # Parse beacon metadata, commands, checkins
+    }
+    if [c2][log][type] == "events" {
+      grok { ... }  # Parse operator join/leave, initial beacons
+    }
+    # ... full parsing logic for all log types
+  }
+  # Then index routing
+}
+```
+
+**Files Modified**:
+- `redelk_ubuntu_deploy.sh` - Lines 486-722: `create_logstash_pipeline()` function
+  - Expanded from 35 lines to 236 lines
+  - Now includes complete Cobalt Strike parser
+  - Parses: beacon logs, events, weblogs, downloads, keystrokes, screenshots
+  - Uses correct nested field structure: `[infra][log][type]`, `[c2][program]`, `[c2][log][type]`
+
+**Impact**:
+- ✅ **NEW deployments** now parse Cobalt Strike logs automatically
+- ✅ Beacon IDs, commands, operators, hostnames extracted on ingestion
+- ✅ Dashboards populate immediately with beacon activity
+- ✅ All log types supported: beacon, events, weblog, downloads, keystrokes, screenshots
+- ✅ Compatible with official RedELK Filebeat field structure
+- ✅ No hotfix needed - works out of the box
+
+**For Existing Deployments**:
+Users with v3.0.1 or v3.0.2 deployments need to either:
+1. **Redeploy** with v3.0.3 deployment bundle, OR
+2. Apply manual fix: Replace `/opt/RedELK/elkserver/logstash/pipelines/main.conf` with new version
+
+**Why This Happened**:
+- Initial v3.0 design assumed Logstash would load from `/conf.d/` like official RedELK
+- But deployment script mounted only `/pipelines/main.conf` to keep it simple
+- Parsing logic was written but never integrated into the actual deployment
+
+**Lesson Learned**:
+- Always verify mounted Docker volumes match what configs expect
+- Test deployments end-to-end including log parsing verification
+- Check Elasticsearch for parsed fields, not just document counts
+
+---
+
 ## [3.0.2] - 2025-10-26
 
 ### Summary

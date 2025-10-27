@@ -484,7 +484,7 @@ EOF
 }
 
 create_logstash_pipeline() {
-    echo "[INFO] Creating Logstash pipeline..."
+    echo "[INFO] Creating Logstash pipeline with Cobalt Strike parsing..."
     cat > "${REDELK_PATH}/elkserver/logstash/pipelines/main.conf" <<'EOF'
 input {
   beats {
@@ -494,14 +494,212 @@ input {
 }
 
 filter {
-  # Route to correct index based on logtype/infralogtype fields
-  if [logtype] == "rtops" or [fields][logtype] == "rtops" {
+  # ============================================
+  # Cobalt Strike C2 Log Parser
+  # Compatible with official RedELK Filebeat field structure
+  # ============================================
+  if [infra][log][type] == "rtops" and [c2][program] == "cobaltstrike" {
+
+    # Parse beacon logs
+    if [c2][log][type] == "beacon" {
+      grok {
+        match => {
+          "message" => "(?<cs_timestamp>%{MONTHNUM}/%{MONTHDAY} %{TIME}(?: UTC)?) \[%{DATA:cs_type}\] %{GREEDYDATA:cs_message}"
+        }
+      }
+
+      # Parse beacon metadata
+      if [cs_type] == "metadata" {
+        grok {
+          match => {
+            "cs_message" => "beacon_%{DATA:beacon_id} %{IP:target_ip} %{DATA:target_hostname} %{DATA:target_username} %{DATA:target_process} %{NUMBER:target_pid}"
+          }
+        }
+        mutate {
+          add_field => {
+            "[beacon][id]" => "%{beacon_id}"
+            "[host][ip]" => "%{target_ip}"
+            "[host][hostname]" => "%{target_hostname}"
+            "[user][name]" => "%{target_username}"
+            "[process][name]" => "%{target_process}"
+            "[process][pid]" => "%{target_pid}"
+          }
+        }
+      }
+
+      # Parse beacon initial checkin
+      if [cs_type] == "initial" {
+        grok {
+          match => {
+            "cs_message" => "%{DATA:beacon_id} beacon from %{IP:target_ip} as %{DATA:target_username}"
+          }
+        }
+        mutate {
+          add_field => {
+            "[beacon][id]" => "%{beacon_id}"
+            "[host][ip]" => "%{target_ip}"
+            "[user][name]" => "%{target_username}"
+            "[event][action]" => "beacon_initial"
+          }
+        }
+      }
+
+      # Parse beacon commands/tasks
+      if [cs_type] == "task" {
+        grok {
+          match => {
+            "cs_message" => "%{DATA:operator} tasked beacon_%{DATA:beacon_id} %{GREEDYDATA:command}"
+          }
+        }
+        mutate {
+          add_field => {
+            "[beacon][id]" => "%{beacon_id}"
+            "[user][name]" => "%{operator}"
+            "[process][command_line]" => "%{command}"
+            "[event][action]" => "beacon_task"
+          }
+        }
+      }
+
+      # Parse beacon output
+      if [cs_type] == "output" {
+        mutate {
+          add_field => { "[event][action]" => "beacon_output" }
+        }
+      }
+
+      # Parse beacon checkin
+      if [cs_type] == "checkin" {
+        mutate {
+          add_field => { "[event][action]" => "beacon_checkin" }
+        }
+      }
+    }
+
+    # Parse events.log (operator join/leave, beacon initials)
+    if [c2][log][type] == "events" {
+      grok {
+        match => {
+          "message" => "(?<cs_timestamp>%{MONTHNUM}/%{MONTHDAY} %{TIME}(?: UTC)?) (?<cs_event>.*)"
+        }
+      }
+
+      # Parse initial beacon from events.log
+      if "initial beacon from" in [message] {
+        grok {
+          match => {
+            "message" => ".*initial beacon from %{DATA:target_username}@%{IP:target_ip} \\(%{DATA:target_hostname}\\)"
+          }
+        }
+        mutate {
+          add_field => {
+            "[user][name]" => "%{target_username}"
+            "[host][ip]" => "%{target_ip}"
+            "[host][hostname]" => "%{target_hostname}"
+            "[event][action]" => "beacon_initial"
+          }
+        }
+      }
+
+      # Parse operator quit/leave
+      if [cs_event] =~ /^\*\*\* .* quit$/ or [cs_event] =~ /^\*\*\* .* left$/ {
+        mutate {
+          add_field => {
+            "[event][action]" => "operator_leave"
+            "[event][type]" => "disconnection"
+          }
+        }
+      }
+
+      # Parse operator join
+      if [cs_event] =~ /^\*\*\* .* joined$/ {
+        mutate {
+          add_field => {
+            "[event][action]" => "operator_join"
+            "[event][type]" => "connection"
+          }
+        }
+      }
+    }
+
+    # Parse weblog
+    if [c2][log][type] == "weblog" {
+      grok {
+        match => {
+          "message" => "%{IPORHOST:source_ip} - - \[%{HTTPDATE:http_timestamp}\] \"%{WORD:http_method} %{URIPATH:url_path}(?:%{URIPARAM:url_query})? HTTP/%{NUMBER:http_version}\" %{NUMBER:http_status} %{NUMBER:http_bytes}"
+        }
+      }
+      mutate {
+        add_field => {
+          "[source][ip]" => "%{source_ip}"
+          "[http][request][method]" => "%{http_method}"
+          "[url][path]" => "%{url_path}"
+          "[http][response][status_code]" => "%{http_status}"
+          "[event][action]" => "http_request"
+        }
+      }
+    }
+
+    # Parse downloads
+    if [c2][log][type] == "downloads" {
+      mutate {
+        add_field => {
+          "[event][action]" => "file_download"
+          "[file][path]" => "%{message}"
+        }
+      }
+    }
+
+    # Parse keystrokes
+    if [c2][log][type] == "keystrokes" {
+      mutate {
+        add_field => {
+          "[event][action]" => "keylogger"
+          "[file][type]" => "keystrokes"
+        }
+        add_tag => [ "keylogger" ]
+      }
+    }
+
+    # Parse screenshots
+    if [c2][log][type] == "screenshots" {
+      mutate {
+        add_field => {
+          "[event][action]" => "screenshot"
+          "[file][type]" => "screenshot"
+        }
+        add_tag => [ "screenshot" ]
+      }
+    }
+
+    # Common enrichment for all CS logs
+    mutate {
+      add_field => {
+        "[event][module]" => "cobaltstrike"
+        "[event][dataset]" => "rtops"
+      }
+    }
+
+    # Date parsing for CS timestamp
+    if [cs_timestamp] {
+      date {
+        match => [ "cs_timestamp", "MM/dd HH:mm:ss", "MM/dd HH:mm:ss 'UTC'" ]
+        target => "@timestamp"
+        timezone => "UTC"
+      }
+    }
+  }
+
+  # ============================================
+  # Index Routing
+  # ============================================
+  if [infra][log][type] == "rtops" or [logtype] == "rtops" or [fields][logtype] == "rtops" {
     mutate { add_field => { "[@metadata][index_prefix]" => "rtops" } }
-  } else if [infralogtype] == "redirtraffic" or [fields][infralogtype] == "redirtraffic" {
+  } else if [infra][log][type] == "redirtraffic" or [infralogtype] == "redirtraffic" or [fields][infralogtype] == "redirtraffic" {
     mutate { add_field => { "[@metadata][index_prefix]" => "redirtraffic" } }
-  } else if [infralogtype] == "redirerror" or [fields][infralogtype] == "redirerror" {
+  } else if [infra][log][type] == "redirerror" or [infralogtype] == "redirerror" or [fields][infralogtype] == "redirerror" {
     mutate { add_field => { "[@metadata][index_prefix]" => "redirerror" } }
-  } else if [infralogtype] == "c2" or [fields][infralogtype] == "c2" {
+  } else if [infra][log][type] == "c2" or [infralogtype] == "c2" or [fields][infralogtype] == "c2" {
     mutate { add_field => { "[@metadata][index_prefix]" => "rtops" } }
   } else {
     mutate { add_field => { "[@metadata][index_prefix]" => "redelk" } }
