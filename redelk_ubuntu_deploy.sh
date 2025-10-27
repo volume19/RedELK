@@ -822,29 +822,6 @@ EOF
     chmod 644 "${REDELK_PATH}/elkserver/logstash/pipelines/main.conf"
 }
 
-    mutate { add_field => { "[@metadata][index_prefix]" => "redirerror" } }
-  } else if [infra][log][type] == "c2" or [infralogtype] == "c2" or [fields][infralogtype] == "c2" {
-    mutate { add_field => { "[@metadata][index_prefix]" => "rtops" } }
-  } else {
-    mutate { add_field => { "[@metadata][index_prefix]" => "redelk" } }
-  }
-}
-
-output {
-  elasticsearch {
-    hosts    => ["http://elasticsearch:9200"]
-    user     => "elastic"
-    password => "RedElk2024Secure"
-    index    => "%{[@metadata][index_prefix]}-%{+YYYY.MM.dd}"
-    template_overwrite => true
-  }
-}
-EOF
-
-    # Fix permissions so Logstash container (uid 1000) can read it
-    chmod 644 "${REDELK_PATH}/elkserver/logstash/pipelines/main.conf"
-}
-
 provision_logstash_api_key() {
     echo "[INFO] Creating Logstash API key (writer)..."
     local resp

@@ -2,6 +2,33 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.0.5] - 2025-10-27
+
+### Summary
+**CRITICAL FIX**: Deployment script bash syntax error resolved
+
+### Fixed
+- **Bash Syntax Error**: Removed duplicate Logstash configuration code (lines 824-846) that appeared outside heredoc EOF marker
+  - Caused: `./redelk_ubuntu_deploy.sh: line 825: mutate: command not found`
+  - Root cause: Duplicate code after EOF in `create_logstash_pipeline()` function
+  - Impact: Deployment script now executes without errors
+
+**Files Modified**:
+- `redelk_ubuntu_deploy.sh` - Removed duplicate lines after heredoc EOF marker at line 819
+
+**Testing**:
+- ✅ Bash syntax validation: `bash -n redelk_ubuntu_deploy.sh` passes
+- ✅ All 10 heredocs properly paired with EOF markers
+- ✅ All 28 functions properly structured
+
+**For Existing Deployments**:
+Download fresh bundle from GitHub or run:
+```bash
+bash <(curl -s https://raw.githubusercontent.com/[user]/RedELK/master/scripts/install.sh)
+```
+
+---
+
 ## [3.0.4] - 2025-10-27
 
 ### Summary

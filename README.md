@@ -81,9 +81,14 @@ sudo /opt/RedELK/scripts/test-data-generator.sh
 - **Helper Scripts**: Health check, beacon manager, threat feed updater
 - **Dashboards**: Pre-built Kibana visualizations
 
-## ✨ What's New in v3.0.4 (2025-10-27)
+## ✨ What's New in v3.0.5 (2025-10-27)
 
-**COMPLETE FIX**: Universal parsing supporting ALL field structures + redirector parsing
+**CRITICAL FIX**: Deployment script bash syntax error resolved + universal parsing
+
+### Latest Changes (v3.0.5)
+- **Fixed**: Bash syntax error in deployment script (duplicate code after heredoc EOF)
+- **Verified**: All functions and heredocs properly structured
+- **Tested**: Script passes bash syntax validation
 
 ### The Complete Solution
 - **Flexible Field Support**: Works with BOTH nested `[infra][log][type]` AND flat `[fields][logtype]`
@@ -102,7 +107,8 @@ sudo /opt/RedELK/scripts/test-data-generator.sh
 - v3.0.1: No parsing (only routing)
 - v3.0.2: Parsing but wrong fields
 - v3.0.3: Parsing with nested fields only
-- v3.0.4: **Universal parsing - supports everything**
+- v3.0.4: Universal parsing - supports everything
+- v3.0.5: **Fixed deployment script syntax errors**
 
 See [CHANGELOG.md](CHANGELOG.md) for complete technical details.
 
