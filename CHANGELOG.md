@@ -2,6 +2,67 @@
 
 All notable changes to this project are documented in this file.
 
+## [3.0.2] - 2025-10-26
+
+### Summary
+**CRITICAL FIX**: Logstash parser now compatible with official RedELK Filebeat field structure. This fix resolves empty dashboards caused by field structure mismatch between Filebeat and Logstash.
+
+---
+
+## Critical Fix: Logstash Field Structure Compatibility
+
+**Problem**: Dashboards remained empty despite 1,800+ documents in Elasticsearch. All beacon logs stored as unparsed raw text.
+
+**Root Cause**:
+- Users deploying with **official RedELK Filebeat configs** (nested fields)
+- But using **custom Logstash parsers** expecting flat field structure
+- Field path mismatch prevented ALL log parsing
+
+**Official RedELK Filebeat Structure** (what users have):
+```yaml
+fields:
+  infra:
+    log:
+      type: rtops          → [infra][log][type]
+  c2:
+    program: cobaltstrike  → [c2][program]
+    log:
+      type: beacon         → [c2][log][type]
+```
+
+**Previous Logstash Parser** (didn't match):
+```ruby
+if [fields][logtype] == "rtops" and [fields][c2_program] == "cobaltstrike"
+  if [fields][c2_log_type] == "beacon"
+```
+
+**Fixed Logstash Parser** (now compatible):
+```ruby
+if [infra][log][type] == "rtops" and [c2][program] == "cobaltstrike"
+  if [c2][log][type] == "beacon"
+```
+
+**Solution**:
+- Updated ALL field references in `50-filter-c2-cobaltstrike.conf`
+- Changed from flat `[fields][x]` structure to nested `[infra][log][type]` and `[c2][log][type]`
+- Now compatible with both official RedELK v2 Filebeat configs and custom configs
+
+**Files Modified**:
+- `elkserver/logstash/conf.d/50-filter-c2-cobaltstrike.conf` - Lines 6-7, 136, 163, 184, 200, 211
+
+**Impact**:
+- ✅ Cobalt Strike beacon logs now parsed correctly
+- ✅ Beacon IDs, commands, operators extracted into structured fields
+- ✅ Dashboards populate with beacon activity, traffic, commands
+- ✅ Events (join/leave), weblogs, downloads, keystrokes, screenshots all parsed
+- ✅ Compatible with official RedELK Filebeat configurations
+
+**Hotfix Script**: `HOTFIX-LOGSTASH-FIELDS.sh` - Apply to running deployments without full redeployment
+
+**Result**: All 1,824 existing documents will be re-indexed on next Filebeat ship, and dashboards will populate immediately.
+
+---
+
 ## [3.0.1] - 2025-10-26
 
 ### Summary

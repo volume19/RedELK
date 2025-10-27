@@ -29,6 +29,19 @@ RedELK follows [Semantic Versioning](https://semver.org/) with the format `MAJOR
 
 ### v3.0.x Series - Elastic Stack 8.15.3
 
+#### v3.0.2 (2025-10-26)
+**CRITICAL HOTFIX: Logstash Parser Compatibility**
+
+Fixed field structure mismatch preventing beacon log parsing:
+- Updated Logstash parser to use official RedELK field structure
+- Changed from flat `[fields][logtype]` to nested `[infra][log][type]`
+- Now compatible with official RedELK v2 Filebeat configurations
+- Dashboards now populate correctly with beacon data
+- Includes hotfix script for existing deployments
+
+**Git Tag**: `v3.0.2`
+**Commit**: TBD
+
 #### v3.0.1 (2025-10-26)
 **Production Hardening Release**
 

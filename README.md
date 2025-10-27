@@ -81,7 +81,22 @@ sudo /opt/RedELK/scripts/test-data-generator.sh
 - **Helper Scripts**: Health check, beacon manager, threat feed updater
 - **Dashboards**: Pre-built Kibana visualizations
 
-## ✨ What's New in v3.0.1 (2025-10-26)
+## ✨ What's New in v3.0.2 (2025-10-26)
+
+**CRITICAL HOTFIX**: Logstash parser compatibility with official RedELK Filebeat configs
+
+### Critical Fix
+- **Logstash Field Structure** - Fixed field path mismatch preventing beacon log parsing
+  - Updated from flat fields `[fields][logtype]` to nested `[infra][log][type]` structure
+  - Now compatible with official RedELK v2 Filebeat configurations
+  - Dashboards now populate correctly with beacon activity, commands, and events
+  - Hotfix script included: `HOTFIX-LOGSTASH-FIELDS.sh` for existing deployments
+
+See [CHANGELOG.md](CHANGELOG.md) for complete details.
+
+---
+
+## Previous Release: v3.0.1 (2025-10-26)
 
 Production-hardened release with critical fixes for reliability:
 
@@ -105,7 +120,7 @@ See [CHANGELOG.md](CHANGELOG.md) for complete details.
 
 RedELK follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
-- **Current Version**: v3.0.1 (see [VERSION](VERSION) file)
+- **Current Version**: v3.0.2 (see [VERSION](VERSION) file)
 - **Version History**: [CHANGELOG.md](CHANGELOG.md)
 - **Versioning Policy**: [VERSIONING.md](VERSIONING.md)
 
