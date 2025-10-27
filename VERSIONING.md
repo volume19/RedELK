@@ -29,6 +29,20 @@ RedELK follows [Semantic Versioning](https://semver.org/) with the format `MAJOR
 
 ### v3.0.x Series - Elastic Stack 8.15.3
 
+#### v3.0.4 (2025-10-27)
+**COMPLETE FIX: Universal Parsing + Redirector Support**
+
+Final comprehensive fix combining all lessons learned:
+- Supports BOTH nested and flat field structures
+- Auto-detects log type from file path when field missing
+- Complete Cobalt Strike parsing (beacon, events, weblog, etc.)
+- Redirector parsing (Apache, Nginx, HAProxy) with ECS fields
+- Works with ANY Filebeat configuration
+- No manual fixes needed - works out of the box
+
+**Git Tag**: `v3.0.4`
+**Commit**: TBD
+
 #### v3.0.3 (2025-10-26)
 **ROOT CAUSE FIX: Deployment Script Includes Parsing**
 

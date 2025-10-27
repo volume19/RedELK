@@ -484,7 +484,7 @@ EOF
 }
 
 create_logstash_pipeline() {
-    echo "[INFO] Creating Logstash pipeline with Cobalt Strike parsing..."
+    echo "[INFO] Creating Logstash pipeline with flexible Cobalt Strike parsing..."
     cat > "${REDELK_PATH}/elkserver/logstash/pipelines/main.conf" <<'EOF'
 input {
   beats {
@@ -496,12 +496,77 @@ input {
 filter {
   # ============================================
   # Cobalt Strike C2 Log Parser
-  # Compatible with official RedELK Filebeat field structure
+  # Supports BOTH nested and flat field structures
+  # Auto-detects log type from file path when field missing
   # ============================================
-  if [infra][log][type] == "rtops" and [c2][program] == "cobaltstrike" {
+
+  # Check for nested fields (official RedELK) OR flat fields (simple configs)
+  if ([infra][log][type] == "rtops" and [c2][program] == "cobaltstrike") or
+     ([fields][logtype] == "rtops" and [fields][c2_program] == "cobaltstrike") {
+
+    # Auto-detect log type from file path if not provided in fields
+    if [log][file][path] =~ /events\.log$/ {
+      mutate { add_field => { "[detected_log_type]" => "events" } }
+    } else if [log][file][path] =~ /beacon_.*\.log$/ {
+      mutate { add_field => { "[detected_log_type]" => "beacon" } }
+    } else if [log][file][path] =~ /weblog/ {
+      mutate { add_field => { "[detected_log_type]" => "weblog" } }
+    } else if [log][file][path] =~ /downloads\.log$/ {
+      mutate { add_field => { "[detected_log_type]" => "downloads" } }
+    } else if [log][file][path] =~ /keystrokes/ {
+      mutate { add_field => { "[detected_log_type]" => "keystrokes" } }
+    } else if [log][file][path] =~ /screenshot/ {
+      mutate { add_field => { "[detected_log_type]" => "screenshots" } }
+    }
+
+    # Parse events.log (operator join/leave, initial beacons) - MOST COMMON
+    if [detected_log_type] == "events" or [c2][log][type] == "events" or [fields][c2_log_type] == "events" {
+      grok {
+        match => {
+          "message" => "(?<cs_timestamp>%{MONTHNUM}/%{MONTHDAY} %{TIME}(?: UTC)?) (?<cs_event>.*)"
+        }
+      }
+
+      # Parse initial beacon from events.log
+      if "initial beacon from" in [message] {
+        grok {
+          match => {
+            "message" => ".*initial beacon from %{DATA:target_username}@%{IP:target_ip} \\(%{DATA:target_hostname}\\)"
+          }
+        }
+        mutate {
+          add_field => {
+            "[user][name]" => "%{target_username}"
+            "[host][ip]" => "%{target_ip}"
+            "[host][hostname]" => "%{target_hostname}"
+            "[event][action]" => "beacon_initial"
+          }
+        }
+      }
+
+      # Parse operator quit/leave
+      if [cs_event] =~ /^\*\*\* .* quit$/ or [cs_event] =~ /^\*\*\* .* left$/ {
+        mutate {
+          add_field => {
+            "[event][action]" => "operator_leave"
+            "[event][type]" => "disconnection"
+          }
+        }
+      }
+
+      # Parse operator join
+      if [cs_event] =~ /^\*\*\* .* joined$/ {
+        mutate {
+          add_field => {
+            "[event][action]" => "operator_join"
+            "[event][type]" => "connection"
+          }
+        }
+      }
+    }
 
     # Parse beacon logs
-    if [c2][log][type] == "beacon" {
+    if [detected_log_type] == "beacon" or [c2][log][type] == "beacon" or [fields][c2_log_type] == "beacon" {
       grok {
         match => {
           "message" => "(?<cs_timestamp>%{MONTHNUM}/%{MONTHDAY} %{TIME}(?: UTC)?) \[%{DATA:cs_type}\] %{GREEDYDATA:cs_message}"
@@ -576,54 +641,8 @@ filter {
       }
     }
 
-    # Parse events.log (operator join/leave, beacon initials)
-    if [c2][log][type] == "events" {
-      grok {
-        match => {
-          "message" => "(?<cs_timestamp>%{MONTHNUM}/%{MONTHDAY} %{TIME}(?: UTC)?) (?<cs_event>.*)"
-        }
-      }
-
-      # Parse initial beacon from events.log
-      if "initial beacon from" in [message] {
-        grok {
-          match => {
-            "message" => ".*initial beacon from %{DATA:target_username}@%{IP:target_ip} \\(%{DATA:target_hostname}\\)"
-          }
-        }
-        mutate {
-          add_field => {
-            "[user][name]" => "%{target_username}"
-            "[host][ip]" => "%{target_ip}"
-            "[host][hostname]" => "%{target_hostname}"
-            "[event][action]" => "beacon_initial"
-          }
-        }
-      }
-
-      # Parse operator quit/leave
-      if [cs_event] =~ /^\*\*\* .* quit$/ or [cs_event] =~ /^\*\*\* .* left$/ {
-        mutate {
-          add_field => {
-            "[event][action]" => "operator_leave"
-            "[event][type]" => "disconnection"
-          }
-        }
-      }
-
-      # Parse operator join
-      if [cs_event] =~ /^\*\*\* .* joined$/ {
-        mutate {
-          add_field => {
-            "[event][action]" => "operator_join"
-            "[event][type]" => "connection"
-          }
-        }
-      }
-    }
-
     # Parse weblog
-    if [c2][log][type] == "weblog" {
+    if [detected_log_type] == "weblog" or [c2][log][type] == "weblog" or [fields][c2_log_type] == "weblog" {
       grok {
         match => {
           "message" => "%{IPORHOST:source_ip} - - \[%{HTTPDATE:http_timestamp}\] \"%{WORD:http_method} %{URIPATH:url_path}(?:%{URIPARAM:url_query})? HTTP/%{NUMBER:http_version}\" %{NUMBER:http_status} %{NUMBER:http_bytes}"
@@ -641,7 +660,7 @@ filter {
     }
 
     # Parse downloads
-    if [c2][log][type] == "downloads" {
+    if [detected_log_type] == "downloads" or [c2][log][type] == "downloads" or [fields][c2_log_type] == "downloads" {
       mutate {
         add_field => {
           "[event][action]" => "file_download"
@@ -651,7 +670,7 @@ filter {
     }
 
     # Parse keystrokes
-    if [c2][log][type] == "keystrokes" {
+    if [detected_log_type] == "keystrokes" or [c2][log][type] == "keystrokes" or [fields][c2_log_type] == "keystrokes" {
       mutate {
         add_field => {
           "[event][action]" => "keylogger"
@@ -662,7 +681,7 @@ filter {
     }
 
     # Parse screenshots
-    if [c2][log][type] == "screenshots" {
+    if [detected_log_type] == "screenshots" or [c2][log][type] == "screenshots" or [fields][c2_log_type] == "screenshots" {
       mutate {
         add_field => {
           "[event][action]" => "screenshot"
@@ -691,6 +710,88 @@ filter {
   }
 
   # ============================================
+  # Redirector Traffic Parser (Apache, Nginx, HAProxy)
+  # Supports both nested and flat field structures
+  # ============================================
+  if ([infra][log][type] == "redirtraffic") or ([fields][infralogtype] == "redirtraffic") {
+
+    # Parse Apache/Nginx combined log format
+    if ([redir][program] == "apache" or [redir][program] == "nginx") or
+       ([fields][redirprogram] == "apache" or [fields][redirprogram] == "nginx") {
+      grok {
+        match => {
+          "message" => '%{IPORHOST:source_ip} - %{DATA:auth_user} \[%{HTTPDATE:timestamp}\] "%{WORD:http_method} %{DATA:url_path} HTTP/%{NUMBER:http_version}" %{NUMBER:http_status} %{NUMBER:http_bytes} "%{DATA:http_referrer}" "%{DATA:user_agent}"'
+        }
+      }
+
+      # Parse timestamp
+      if [timestamp] {
+        date {
+          match => [ "timestamp", "dd/MMM/yyyy:HH:mm:ss Z" ]
+          target => "@timestamp"
+        }
+      }
+
+      # Extract fields
+      mutate {
+        add_field => {
+          "[source][ip]" => "%{source_ip}"
+          "[http][request][method]" => "%{http_method}"
+          "[url][original]" => "%{url_path}"
+          "[http][version]" => "%{http_version}"
+          "[http][response][status_code]" => "%{http_status}"
+          "[http][response][body][bytes]" => "%{http_bytes}"
+          "[http][request][referrer]" => "%{http_referrer}"
+          "[user_agent][original]" => "%{user_agent}"
+          "[event][action]" => "http_request"
+          "[event][category]" => "web"
+        }
+        convert => {
+          "[http][response][status_code]" => "integer"
+          "[http][response][body][bytes]" => "integer"
+        }
+      }
+    }
+
+    # Parse HAProxy log format
+    if [redir][program] == "haproxy" or [fields][redirprogram] == "haproxy" {
+      grok {
+        match => {
+          "message" => '%{SYSLOGTIMESTAMP:syslog_timestamp} %{IPORHOST:haproxy_host} %{SYSLOGPROG}: %{IPORHOST:source_ip}:%{POSINT:source_port} \[%{HAPROXYDATE:accept_date}\] %{NOTSPACE:frontend_name} %{NOTSPACE:backend_name}/%{NOTSPACE:server_name} %{INT:time_request}/%{INT:time_queue}/%{INT:time_backend_connect}/%{INT:time_backend_response}/%{NOTSPACE:time_duration} %{INT:http_status} %{NOTSPACE:http_bytes} %{DATA:captured_request_cookie} %{DATA:captured_response_cookie} %{NOTSPACE:termination_state} %{INT:actconn}/%{INT:feconn}/%{INT:beconn}/%{INT:srv_conn}/%{NOTSPACE:retries} %{INT:srv_queue}/%{INT:backend_queue} "%{WORD:http_method} %{DATA:url_path} HTTP/%{NUMBER:http_version}"'
+        }
+      }
+
+      mutate {
+        add_field => {
+          "[source][ip]" => "%{source_ip}"
+          "[source][port]" => "%{source_port}"
+          "[http][request][method]" => "%{http_method}"
+          "[url][original]" => "%{url_path}"
+          "[http][version]" => "%{http_version}"
+          "[http][response][status_code]" => "%{http_status}"
+          "[http][response][body][bytes]" => "%{http_bytes}"
+          "[event][action]" => "http_request"
+          "[event][category]" => "web"
+          "[observer][name]" => "%{haproxy_host}"
+        }
+        convert => {
+          "[http][response][status_code]" => "integer"
+          "[http][response][body][bytes]" => "integer"
+          "[source][port]" => "integer"
+        }
+      }
+    }
+
+    # Common enrichment for all redirector logs
+    mutate {
+      add_field => {
+        "[event][module]" => "redirector"
+        "[event][dataset]" => "redirtraffic"
+      }
+    }
+  }
+
+  # ============================================
   # Index Routing
   # ============================================
   if [infra][log][type] == "rtops" or [logtype] == "rtops" or [fields][logtype] == "rtops" {
@@ -698,6 +799,29 @@ filter {
   } else if [infra][log][type] == "redirtraffic" or [infralogtype] == "redirtraffic" or [fields][infralogtype] == "redirtraffic" {
     mutate { add_field => { "[@metadata][index_prefix]" => "redirtraffic" } }
   } else if [infra][log][type] == "redirerror" or [infralogtype] == "redirerror" or [fields][infralogtype] == "redirerror" {
+    mutate { add_field => { "[@metadata][index_prefix]" => "redirerror" } }
+  } else if [infra][log][type] == "c2" or [infralogtype] == "c2" or [fields][infralogtype] == "c2" {
+    mutate { add_field => { "[@metadata][index_prefix]" => "rtops" } }
+  } else {
+    mutate { add_field => { "[@metadata][index_prefix]" => "redelk" } }
+  }
+}
+
+output {
+  elasticsearch {
+    hosts    => ["http://elasticsearch:9200"]
+    user     => "elastic"
+    password => "RedElk2024Secure"
+    index    => "%{[@metadata][index_prefix]}-%{+YYYY.MM.dd}"
+    template_overwrite => true
+  }
+}
+EOF
+
+    # Fix permissions so Logstash container (uid 1000) can read it
+    chmod 644 "${REDELK_PATH}/elkserver/logstash/pipelines/main.conf"
+}
+
     mutate { add_field => { "[@metadata][index_prefix]" => "redirerror" } }
   } else if [infra][log][type] == "c2" or [infralogtype] == "c2" or [fields][infralogtype] == "c2" {
     mutate { add_field => { "[@metadata][index_prefix]" => "rtops" } }

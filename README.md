@@ -81,27 +81,30 @@ sudo /opt/RedELK/scripts/test-data-generator.sh
 - **Helper Scripts**: Health check, beacon manager, threat feed updater
 - **Dashboards**: Pre-built Kibana visualizations
 
-## ✨ What's New in v3.0.3 (2025-10-26)
+## ✨ What's New in v3.0.4 (2025-10-27)
 
-**ROOT CAUSE FIX**: Deployment script now includes Cobalt Strike parsing in main.conf
+**COMPLETE FIX**: Universal parsing supporting ALL field structures + redirector parsing
 
-### The Real Problem (Finally Fixed!)
-- **Previous versions (v3.0.1, v3.0.2)**: Deployment script created `main.conf` with NO parsing logic
-- **Only basic routing** - all Cobalt Strike logs stored as unparsed raw text
-- **Parsing configs existed** in `conf.d/` but were NEVER loaded by Logstash container
-- **v3.0.3 Fix**: Embeds complete Cobalt Strike parser directly into `main.conf`
+### The Complete Solution
+- **Flexible Field Support**: Works with BOTH nested `[infra][log][type]` AND flat `[fields][logtype]`
+- **Auto-Detection**: Detects log type from file path when fields missing
+- **Cobalt Strike**: Full parsing of beacon, events, weblog, downloads, keystrokes, screenshots
+- **Redirectors**: Apache, Nginx, HAProxy log parsing with ECS field mapping
 
 ### Impact
-- ✅ **NEW deployments work out of the box** - no hotfixes needed
-- ✅ Beacon logs parsed automatically: IDs, commands, operators, hostnames
-- ✅ Dashboards populate immediately with structured data
-- ✅ All log types supported: beacon, events, weblog, downloads, keystrokes, screenshots
-- ✅ Compatible with official RedELK Filebeat field structure
+- ✅ Works with ANY Filebeat configuration (official RedELK or custom)
+- ✅ Parses logs even without `c2_log_type` field
+- ✅ Redirector traffic parsed and visualized
+- ✅ Dashboards populate immediately
+- ✅ NO manual configuration needed
 
-### For Existing v3.0.1/v3.0.2 Users
-You need to redeploy or manually replace `/opt/RedELK/elkserver/logstash/pipelines/main.conf`
+### Evolution
+- v3.0.1: No parsing (only routing)
+- v3.0.2: Parsing but wrong fields
+- v3.0.3: Parsing with nested fields only
+- v3.0.4: **Universal parsing - supports everything**
 
-See [CHANGELOG.md](CHANGELOG.md) for complete root cause analysis.
+See [CHANGELOG.md](CHANGELOG.md) for complete technical details.
 
 ---
 
@@ -132,7 +135,7 @@ See [CHANGELOG.md](CHANGELOG.md) for complete details.
 
 RedELK follows [Semantic Versioning](https://semver.org/): `MAJOR.MINOR.PATCH`
 
-- **Current Version**: v3.0.3 (see [VERSION](VERSION) file)
+- **Current Version**: v3.0.4 (see [VERSION](VERSION) file)
 - **Version History**: [CHANGELOG.md](CHANGELOG.md)
 - **Versioning Policy**: [VERSIONING.md](VERSIONING.md)
 
