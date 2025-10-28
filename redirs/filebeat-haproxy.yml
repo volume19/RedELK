@@ -12,8 +12,11 @@ filebeat.inputs:
   include_lines: ['frontend', 'backend']
   exclude_lines: ['ELB-HealthChecker', 'Amazon-Route53-Health-Check', 'check backend']
   fields:
-    infralogtype: redirtraffic
-    redirprogram: haproxy
+    infra:
+      log:
+        type: redirtraffic
+    redir:
+      program: haproxy
   fields_under_root: false
 
 # Output to RedELK Logstash

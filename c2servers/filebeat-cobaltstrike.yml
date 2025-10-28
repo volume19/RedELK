@@ -12,10 +12,13 @@ filebeat.inputs:
     - /home/*/cobaltstrike/*/server/logs/*/beacon_*.log
   exclude_files: ['\.gz$']
   fields:
-    logtype: rtops
-    c2_program: cobaltstrike
-    c2_log_type: beacon
-    infralogtype: c2
+    infra:
+      log:
+        type: rtops
+    c2:
+      program: cobaltstrike
+      log:
+        type: beacon
   fields_under_root: false
   multiline:
     type: pattern
@@ -33,10 +36,13 @@ filebeat.inputs:
     - /home/*/cobaltstrike/*/server/logs/*/events.log
   exclude_files: ['\.gz$']
   fields:
-    logtype: rtops
-    c2_program: cobaltstrike
-    c2_log_type: events
-    infralogtype: c2
+    infra:
+      log:
+        type: rtops
+    c2:
+      program: cobaltstrike
+      log:
+        type: events
   fields_under_root: false
 
 # Cobalt Strike Web Logs
@@ -49,10 +55,13 @@ filebeat.inputs:
     - /home/*/cobaltstrike/*/server/logs/*/weblog.log
   exclude_files: ['\.gz$']
   fields:
-    logtype: rtops
-    c2_program: cobaltstrike
-    c2_log_type: weblog
-    infralogtype: c2
+    infra:
+      log:
+        type: rtops
+    c2:
+      program: cobaltstrike
+      log:
+        type: weblog
   fields_under_root: false
 
 # Cobalt Strike Downloads Log
@@ -65,10 +74,13 @@ filebeat.inputs:
     - /home/*/cobaltstrike/*/server/logs/*/downloads.log
   exclude_files: ['\.gz$']
   fields:
-    logtype: rtops
-    c2_program: cobaltstrike
-    c2_log_type: downloads
-    infralogtype: c2
+    infra:
+      log:
+        type: rtops
+    c2:
+      program: cobaltstrike
+      log:
+        type: downloads
   fields_under_root: false
 
 # Cobalt Strike Keystrokes Log
@@ -81,10 +93,13 @@ filebeat.inputs:
     - /home/*/cobaltstrike/*/server/logs/*/keystrokes.log
   exclude_files: ['\.gz$']
   fields:
-    logtype: rtops
-    c2_program: cobaltstrike
-    c2_log_type: keystrokes
-    infralogtype: c2
+    infra:
+      log:
+        type: rtops
+    c2:
+      program: cobaltstrike
+      log:
+        type: keystrokes
   fields_under_root: false
 
 # Cobalt Strike Screenshots Log (CS 4.2+)
@@ -97,10 +112,13 @@ filebeat.inputs:
     - /home/*/cobaltstrike/*/server/logs/*/screenshots.log
   exclude_files: ['\.gz$']
   fields:
-    logtype: rtops
-    c2_program: cobaltstrike
-    c2_log_type: screenshots
-    infralogtype: c2
+    infra:
+      log:
+        type: rtops
+    c2:
+      program: cobaltstrike
+      log:
+        type: screenshots
   fields_under_root: false
 
 # Output to RedELK Logstash

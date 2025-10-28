@@ -1,0 +1,171 @@
+═══════════════════════════════════════════════════════════════════════════
+                  CRITICAL DIAGNOSIS - v3.0.10 Enhanced Diagnostics
+═══════════════════════════════════════════════════════════════════════════
+
+STATUS: Enhanced diagnostics added to identify the discrepancy
+DATE: 2025-10-28
+ISSUE: File appears correct on disk but Docker/Logstash sees it as truncated
+
+───────────────────────────────────────────────────────────────────────────
+ THE MYSTERY
+───────────────────────────────────────────────────────────────────────────
+
+v3.0.9 deployment showed:
+  ✅ Line endings check: "File has Unix LF line endings"
+  ✅ Hex dump shows: netix/i {. (bytes: 6e 65 74 69 78 2f 69 20 7b)
+  ✅ All defensive CRLF stripping in place
+
+BUT:
+  ❌ Docker validation STILL fails with "byte 2261" truncation error
+  ❌ Logstash STILL sees pattern ending at /acunetix/ (missing /i {)
+
+This means: The file on disk APPEARS correct, but something is wrong!
+
+───────────────────────────────────────────────────────────────────────────
+ NEW DIAGNOSTICS IN v3.0.10
+───────────────────────────────────────────────────────────────────────────
+
+Added after pipeline deployment (around line 1683-1695):
+
+1. Show actual line 61 content with special characters visible:
+   sed -n '61p' .../20-filter-redir-apache.conf | cat -A
+
+2. Show line 61 character count:
+   Should be 111 characters if complete
+
+3. Search for full pattern 'acunetix/i {':
+   Will confirm if pattern exists in deployed file
+
+───────────────────────────────────────────────────────────────────────────
+ WHAT TO LOOK FOR IN NEXT DEPLOYMENT
+───────────────────────────────────────────────────────────────────────────
+
+Deploy the new bundle (redelk-v3-deployment.tar.gz) and look for:
+
+📋 CHECKPOINT #1 - After conf.d/ Copy:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[DEBUG] Checking line endings on 20-filter-redir-apache.conf:
+  ✓ File has Unix LF line endings  ← Should see this
+
+📋 CHECKPOINT #2 - After pipelines/ Copy:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[DEBUG] Checking line endings on final deployed config:
+  ✓ File has Unix LF line endings  ← Should see this
+
+[DEBUG] Hex dump of bytes 2255-2270 (around byte 2261):
+000000 6e 65 74 69 78 2f 69 20 7b 0a...  >netix/i {.<
+       ^^^^^^^^^^^^^^^^^^^^^^^ Should show this
+
+🔍 CHECKPOINT #3 - NEW! Line 61 Content:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[DEBUG] Actual line 61 content:
+    if [user_agent.original] =~ /curl|wget|python|...|acunetix/i {$
+
+^ Look for the '$' at the end! (cat -A shows $ for Unix LF, ^M$ for CRLF)
+
+[DEBUG] Line 61 character count: 111
+^ Should be 111 if complete (110 chars + 1 newline)
+
+[DEBUG] ✓ Pattern 'acunetix/i {' found in file
+^ Should say "found", NOT "NOT found"!
+
+───────────────────────────────────────────────────────────────────────────
+ POSSIBLE OUTCOMES
+───────────────────────────────────────────────────────────────────────────
+
+🔴 SCENARIO A: Line 61 shows truncated content
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[DEBUG] Actual line 61 content:
+    if [user_agent.original] =~ /curl|wget|...|acunetix/$
+                                               NO /i { here!
+
+[DEBUG] Pattern 'acunetix/i {' NOT found in file!
+
+MEANING: The sed command is NOT working correctly!
+         The file is actually truncated on disk.
+
+ACTION: Need to investigate why sed is failing to write complete file.
+
+🟢 SCENARIO B: Line 61 shows COMPLETE content
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[DEBUG] Actual line 61 content:
+    if [user_agent.original] =~ /curl|wget|...|acunetix/i {$
+                                                        ^^^^^
+[DEBUG] Line 61 character count: 111
+[DEBUG] ✓ Pattern 'acunetix/i {' found in file
+
+BUT Docker validation STILL fails!
+
+MEANING: File is correct on disk, but Docker mount is corrupting it!
+         This could be a Docker on Windows/WSL issue.
+
+ACTION: May need to change Docker volume mount strategy or
+        copy files into Docker image instead of bind mounting.
+
+🟡 SCENARIO C: Pattern has invisible characters
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+[DEBUG] Actual line 61 content:
+    if [user_agent.original] =~ /curl|...|acunetix^M/i {$
+                                                     ^^
+                                                     CRLF still present!
+
+MEANING: The sed 's/\r$//' command is NOT removing CRLF!
+         This could be a sed version issue or escaping problem.
+
+ACTION: Try alternative: dos2unix, tr -d '\r', or python script.
+
+───────────────────────────────────────────────────────────────────────────
+ IF SCENARIO B (File correct but Docker fails)
+───────────────────────────────────────────────────────────────────────────
+
+This would indicate Docker bind mount corruption. Solutions:
+
+OPTION 1: Copy files INTO Docker image
+  Instead of bind mounting, build a custom Logstash image with
+  configs baked in. Dockerfile:
+
+  FROM docker.elastic.co/logstash/logstash:8.15.3
+  COPY pipelines/*.conf /usr/share/logstash/pipeline/
+
+OPTION 2: Use Docker cp instead of bind mount
+  Start Logstash with empty pipeline, then docker cp files in
+
+OPTION 3: Test with different Docker storage driver
+  Check: docker info | grep "Storage Driver"
+  Try: overlay2, aufs, devicemapper
+
+OPTION 4: Test file directly inside container
+  docker exec redelk-logstash cat /usr/share/logstash/pipeline/20-filter-redir-apache.conf
+  See if file is truncated inside container
+
+───────────────────────────────────────────────────────────────────────────
+ DEPLOYMENT COMMAND
+───────────────────────────────────────────────────────────────────────────
+
+scp redelk-v3-deployment.tar.gz root@YOUR_SERVER:/tmp/
+
+ssh root@YOUR_SERVER
+cd /tmp
+tar xzf redelk-v3-deployment.tar.gz
+cd DEPLOYMENT-BUNDLE
+sudo bash install-redelk.sh 2>&1 | tee deployment-v3.0.10.log
+
+───────────────────────────────────────────────────────────────────────────
+ WHAT TO SEND BACK
+───────────────────────────────────────────────────────────────────────────
+
+Please provide:
+
+1. The section showing "[DEBUG] Actual line 61 content:" and the 3 lines after it
+2. The section showing "[DEBUG] ✓ Pattern ... found" or "NOT found"
+3. The Logstash validation error (if it still fails)
+
+This will tell us EXACTLY where the problem is occurring!
+
+═══════════════════════════════════════════════════════════════════════════
+
+                     🔍 ENHANCED DIAGNOSTICS READY 🔍
+
+           Next deployment will reveal the true source of the issue
+
+═══════════════════════════════════════════════════════════════════════════

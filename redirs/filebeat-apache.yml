@@ -13,8 +13,11 @@ filebeat.inputs:
   exclude_files: ['\.gz$', '\.bz2$', '\.zip$']
   exclude_lines: ['^#', '^$', 'ELB-HealthChecker', 'Amazon-Route53-Health-Check']
   fields:
-    infralogtype: redirtraffic
-    redirprogram: apache
+    infra:
+      log:
+        type: redirtraffic
+    redir:
+      program: apache
   fields_under_root: false
 
 # Apache SSL Access Logs
@@ -27,9 +30,12 @@ filebeat.inputs:
   exclude_files: ['\.gz$', '\.bz2$', '\.zip$']
   exclude_lines: ['^#', '^$', 'ELB-HealthChecker', 'Amazon-Route53-Health-Check']
   fields:
-    infralogtype: redirtraffic
-    redirprogram: apache
-    ssl: true
+    infra:
+      log:
+        type: redirtraffic
+    redir:
+      program: apache
+      ssl: true
   fields_under_root: false
 
 # Output to RedELK Logstash

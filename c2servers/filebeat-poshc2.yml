@@ -11,10 +11,13 @@ filebeat.inputs:
     - /var/poshc2/*/Server.log
   exclude_files: ['\.gz$']
   fields:
-    logtype: rtops
-    c2_program: poshc2
-    c2_log_type: server
-    infralogtype: c2
+    infra:
+      log:
+        type: rtops
+    c2:
+      program: poshc2
+      log:
+        type: server
   fields_under_root: false
   multiline:
     type: pattern
@@ -31,10 +34,13 @@ filebeat.inputs:
     - /var/poshc2/*/Implant-*.log
   exclude_files: ['\.gz$']
   fields:
-    logtype: rtops
-    c2_program: poshc2
-    c2_log_type: implant
-    infralogtype: c2
+    infra:
+      log:
+        type: rtops
+    c2:
+      program: poshc2
+      log:
+        type: implant
   fields_under_root: false
 
 # PoshC2 Task Logs
@@ -46,10 +52,13 @@ filebeat.inputs:
     - /var/poshc2/*/Task*.log
   exclude_files: ['\.gz$']
   fields:
-    logtype: rtops
-    c2_program: poshc2
-    c2_log_type: tasks
-    infralogtype: c2
+    infra:
+      log:
+        type: rtops
+    c2:
+      program: poshc2
+      log:
+        type: tasks
   fields_under_root: false
 
 # PoshC2 C2 Server Log
@@ -61,10 +70,13 @@ filebeat.inputs:
     - /var/poshc2/*/C2-Server.log
   exclude_files: ['\.gz$']
   fields:
-    logtype: rtops
-    c2_program: poshc2
-    c2_log_type: c2server
-    infralogtype: c2
+    infra:
+      log:
+        type: rtops
+    c2:
+      program: poshc2
+      log:
+        type: c2server
   fields_under_root: false
 
 # Output to RedELK Logstash

@@ -1,143 +1,138 @@
-# RedELK v3.0 - Deployment Instructions
+# RedELK v3.0.7 - Deployment Guide
+
+**Bundle**: redelk-v3-deployment.tar.gz (48KB)
+**Status**: Production Ready
+
+---
 
 ## Quick Start
 
-### 1. Copy to Server
+### 1. Transfer Bundle
 ```bash
-scp redelk-v3-deployment.tar.gz root@10.10.0.69:/tmp/
+scp redelk-v3-deployment.tar.gz root@YOUR_SERVER:/tmp/
 ```
 
-### 2. Deploy on Server
+### 2. Deploy
 ```bash
-ssh root@10.10.0.69
-
-# Clean up any previous installation
-systemctl stop redelk 2>/dev/null || true
-docker compose -f /opt/RedELK/elkserver/docker/docker-compose.yml down -v 2>/dev/null || true
-rm -rf /opt/RedELK
-
-# Extract and deploy
+ssh root@YOUR_SERVER
 cd /tmp
 tar xzf redelk-v3-deployment.tar.gz
 cd DEPLOYMENT-BUNDLE
-sudo bash redelk_ubuntu_deploy.sh
+sudo bash install-redelk.sh
 ```
 
-### 3. Access RedELK
-- **URL**: https://10.10.0.69/
-- **Username**: elastic
-- **Password**: RedElk2024Secure
-
-The deployment will show dashboards immediately after completion.
+### 3. Access
+- **Kibana**: http://YOUR_SERVER:5601
+- **Elasticsearch**: http://YOUR_SERVER:9200
+- **Credentials**: `elastic` / `RedElk2024Secure`
 
 ---
 
-## Expected Deployment Time
+## Validation
 
-- **Fast system** (SSD, 16GB RAM): 4-5 minutes
-- **Average system** (SSD, 8GB RAM): 7-8 minutes
-- **Slow system** (HDD, 4GB RAM): 15-20 minutes
-
-All systems will complete successfully. Slower systems just take longer.
-
----
-
-## Deploy to C2 Servers
-
-After RedELK is running, deploy Filebeat to your C2 servers:
-
+### Pre-Deployment
 ```bash
-# Copy package from RedELK server
-scp root@10.10.0.69:/tmp/c2servers.tgz root@POLARIS:/tmp/
+# Validate bundle structure (on dev machine)
+bash bundle_self_test.sh redelk-v3-deployment.tar.gz
+```
 
-# Deploy on C2 server
-ssh root@POLARIS
+### Expected Output
+```
+PRE-FLIGHT CHECKS: 7/7 PASS
+  - 11 Logstash configs found
+  - 3 Elasticsearch templates found
+  - 1 Kibana dashboard found (>2KB)
+  
+FILE COPY: All files verified
+  - 11 configs → conf.d/
+  - 11 configs → pipelines/
+  
+LOGSTASH VALIDATION: Configuration OK
+
+POST-FLIGHT CHECKS: 6/6 PASS
+  - Elasticsearch: yellow/green
+  - Logstash API: responding
+  - Port 5044: listening
+  - Kibana: available
+  - Dashboards: imported
+```
+
+---
+
+## Clean Redeploy
+
+To completely wipe and redeploy:
+```bash
+# On server
 cd /tmp
-tar xzf c2servers.tgz
-cd c2package
-sudo bash deploy-filebeat-c2.sh
-```
+rm -rf DEPLOYMENT-BUNDLE redelk-v3-deployment.tar.gz
 
----
+# Transfer new bundle
+scp redelk-v3-deployment.tar.gz root@YOUR_SERVER:/tmp/
 
-## Deploy to Redirectors
-
-```bash
-# Copy package from RedELK server
-scp root@10.10.0.69:/tmp/redirs.tgz root@REDIRECTOR:/tmp/
-
-# Deploy on redirector
-ssh root@REDIRECTOR
+# Deploy
+ssh root@YOUR_SERVER
 cd /tmp
-tar xzf redirs.tgz
-cd redirpackage
-sudo bash deploy-filebeat-redir.sh
+tar xzf redelk-v3-deployment.tar.gz
+cd DEPLOYMENT-BUNDLE
+sudo bash install-redelk.sh
 ```
 
----
-
-## Verify Deployment
-
-```bash
-# Check all services running
-docker ps
-
-# Check Elasticsearch
-curl -u elastic:RedElk2024Secure http://localhost:9200
-
-# Check Kibana
-curl http://localhost:5601/api/status
-
-# Check Logstash
-curl http://localhost:9600/?pretty
-
-# View logs
-docker logs redelk-elasticsearch
-docker logs redelk-logstash
-docker logs redelk-kibana
-```
+The installer automatically cleans previous installations.
 
 ---
 
 ## Troubleshooting
 
-### Dashboards Not Showing
-
-If dashboards didn't import automatically, retry:
-```bash
-sudo bash /tmp/fix-dashboards.sh
-```
-
-### Service Won't Start
-
-Check logs for the failing service:
+### View Logs
 ```bash
 docker logs redelk-elasticsearch
 docker logs redelk-logstash
 docker logs redelk-kibana
+tail -f /var/log/redelk_deploy.log
 ```
 
-### Deployment Failed
-
-Full deployment log is available:
+### Check Services
 ```bash
-cat /var/log/redelk_deploy.log
+systemctl status redelk
+docker ps
+ss -ltn | grep -E '9200|5044|5601'
+```
+
+### Health Check
+```bash
+/opt/RedELK/scripts/redelk-health-check.sh
 ```
 
 ---
 
-## Service Management
+## Architecture
 
-```bash
-# Stop all services
-systemctl stop redelk
+- **Elasticsearch** (9200): Data store, single-node cluster
+- **Logstash** (5044, 9600): Pipeline processing with 11 modular configs
+- **Kibana** (5601): Visualization and dashboards
+- **Nginx** (80, 443): Reverse proxy for secure access
 
-# Start all services
-systemctl start redelk
+**Data Retention**: 30-day ILM policy (hot → warm → delete)
 
-# Restart all services
-systemctl restart redelk
+---
 
-# Check status
-systemctl status redelk
-```
+## File Locations
+
+- **Installation**: `/opt/RedELK/`
+- **Configs**: `/opt/RedELK/elkserver/logstash/pipelines/`
+- **Data**: `/opt/RedELK/elasticsearch-data/`
+- **Logs**: `/var/log/redelk_deploy.log`
+- **Scripts**: `/opt/RedELK/scripts/`
+
+---
+
+## Documentation
+
+- **CHANGELOG.md**: Version history and fixes
+- **DONE.md**: Completion checklist
+- **AUDIT/docs_evidence.md**: Elastic Stack documentation references
+
+---
+
+**For issues**: Check logs, verify Docker is running, ensure port 5044 is not blocked by firewall.

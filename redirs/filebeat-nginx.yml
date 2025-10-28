@@ -12,9 +12,12 @@ filebeat.inputs:
   exclude_files: ['\.gz$', '\.bz2$', '\.zip$']
   exclude_lines: ['ELB-HealthChecker', 'Amazon-Route53-Health-Check']
   fields:
-    infralogtype: redirtraffic
-    redirprogram: nginx
-  fields_under_root: true
+    infra:
+      log:
+        type: redirtraffic
+    redir:
+      program: nginx
+  fields_under_root: false
 
 # Nginx Error Logs
 - type: filestream
@@ -25,9 +28,12 @@ filebeat.inputs:
     - /var/log/nginx/*error*.log
   exclude_files: ['\.gz$', '\.bz2$', '\.zip$']
   fields:
-    infralogtype: redirerror
-    redirprogram: nginx
-  fields_under_root: true
+    infra:
+      log:
+        type: redirerror
+    redir:
+      program: nginx
+  fields_under_root: false
 
 # Output to RedELK Logstash
 output.logstash:
