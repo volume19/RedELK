@@ -49,6 +49,9 @@ readonly ELASTIC_VERSION="${ELASTIC_VERSION:-8.15.3}"
 readonly ELASTIC_PASSWORD="${ELASTIC_PASSWORD:-RedElk2024Secure}"
 readonly ES_JAVA_OPTS="${ES_JAVA_OPTS:--Xms2g -Xmx2g}"
 readonly LS_JAVA_OPTS="${LS_JAVA_OPTS:--Xms1g -Xmx1g}"
+readonly INGEST_USERNAME="${INGEST_USERNAME:-redelk_ingest}"
+readonly INGEST_ROLE_NAME="${INGEST_ROLE_NAME:-redelk_ingest_role}"
+INGEST_PASSWORD="${ELASTIC_INGEST_PASSWORD:-}"
 readonly LOG_FILE="/var/log/redelk_deploy.log"
 readonly RUN_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
@@ -124,6 +127,40 @@ require_nonempty() {
     if (( ${#files[@]} == 0 )); then
         fatal "No ${description} found in bundle"
     fi
+}
+
+generate_secure_password() {
+    tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32
+}
+
+read_env_value() {
+    local key="$1"
+    local file="$2"
+    local value=""
+    while IFS='=' read -r env_key env_val; do
+        if [[ "$env_key" == "$key" ]]; then
+            value=${env_val%$'\r'}
+        fi
+    done <"$file"
+    printf '%s' "$value"
+}
+
+ensure_ingest_password() {
+    if [[ -n "$INGEST_PASSWORD" ]]; then
+        return
+    fi
+
+    local existing_env="${ELK_ROOT}/.env"
+    if [[ -f "$existing_env" ]]; then
+        local existing
+        existing=$(read_env_value "ELASTIC_INGEST_PASSWORD" "$existing_env")
+        if [[ -n "$existing" ]]; then
+            INGEST_PASSWORD="$existing"
+            return
+        fi
+    fi
+
+    INGEST_PASSWORD="$(generate_secure_password)"
 }
 
 load_source_manifests() {
@@ -420,6 +457,7 @@ deploy_logstash_configs() {
 
 create_env_file() {
     print_section "Rendering Compose Environment"
+    ensure_ingest_password
     cat > "${ELK_ROOT}/.env" <<EOF
 ELASTIC_VERSION=${ELASTIC_VERSION}
 ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
@@ -429,6 +467,10 @@ LS_JAVA_OPTS=${LS_JAVA_OPTS}
 REDELK_PATH=${REDELK_PATH}
 ELASTICSEARCH_HOSTS=http://elasticsearch:9200
 COMPOSE_PROJECT_NAME=redelk
+LOGSTASH_ELASTIC_USERNAME=${INGEST_USERNAME}
+LOGSTASH_ELASTIC_PASSWORD=${INGEST_PASSWORD}
+ELASTIC_INGEST_USER=${INGEST_USERNAME}
+ELASTIC_INGEST_PASSWORD=${INGEST_PASSWORD}
 EOF
     chmod 0640 "${ELK_ROOT}/.env"
 }
@@ -567,12 +609,15 @@ services:
       - LS_JAVA_OPTS=${LS_JAVA_OPTS}
       - ELASTIC_PASSWORD=${ELASTIC_PASSWORD}
       - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_HOSTS}
+      - LOGSTASH_ELASTIC_USERNAME=${LOGSTASH_ELASTIC_USERNAME}
+      - LOGSTASH_ELASTIC_PASSWORD=${LOGSTASH_ELASTIC_PASSWORD}
     volumes:
       - ./logstash/pipelines:/usr/share/logstash/pipeline:ro
       - ./logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
       - ./logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
       - ./elasticsearch/index-templates:/usr/share/logstash/config/index-templates:ro
       - ./logstash/threat-feeds:/usr/share/logstash/config/threat-feeds:ro
+      - ../certs:/usr/share/logstash/config/certs:ro
       - logstash-data:/usr/share/logstash/data
       - ./logs/logstash:/usr/share/logstash/logs
     ports:
@@ -656,13 +701,6 @@ validate_logstash_configs() {
     log_info "Logstash configuration validation succeeded"
 }
 
-start_stack() {
-    print_section "Starting Docker Stack"
-    (cd "$ELK_ROOT" && "${COMPOSE_CMD[@]}" pull)
-    (cd "$ELK_ROOT" && "${COMPOSE_CMD[@]}" up -d --remove-orphans)
-    (cd "$ELK_ROOT" && "${COMPOSE_CMD[@]}" ps)
-}
-
 wait_for_elasticsearch() {
     print_section "Waiting for Elasticsearch"
     local attempt=0
@@ -681,6 +719,90 @@ wait_for_elasticsearch() {
         ((attempt++))
     done
     fatal "Elasticsearch did not become ready within timeout"
+}
+
+provision_ingest_credentials() {
+    print_section "Provisioning Elasticsearch Ingest Credentials"
+    ensure_ingest_password
+
+    local role_payload
+    role_payload=$(cat <<EOF
+{
+  "cluster": ["monitor"],
+  "indices": [
+    {
+      "names": ["rtops-*", "redirtraffic-*", "credentials-*", "ioc-*", "screenshots-*", "redelk-*", "alarms-*"],
+      "privileges": ["create_index", "auto_configure", "create_doc", "write"]
+    }
+  ]
+}
+EOF
+)
+
+    log_info "Ensuring ingest role ${INGEST_ROLE_NAME}"
+    local response
+    response=$(curl -sS -u "elastic:${ELASTIC_PASSWORD}" \
+        -H 'Content-Type: application/json' \
+        -X PUT "http://127.0.0.1:9200/_security/role/${INGEST_ROLE_NAME}" \
+        -d "$role_payload")
+    printf '%s\n' "$response"
+    if echo "$response" | jq -e '.role.created == true or .role.created == false' >/dev/null 2>&1; then
+        :
+    else
+        fatal "Failed to create or update ingest role"
+    fi
+
+    local user_payload
+  user_payload=$(cat <<EOF
+{
+  "password": "${INGEST_PASSWORD}",
+  "roles": ["${INGEST_ROLE_NAME}"],
+  "enabled": true
+}
+EOF
+)
+
+    log_info "Ensuring ingest user ${INGEST_USERNAME}"
+    response=$(curl -sS -u "elastic:${ELASTIC_PASSWORD}" \
+        -H 'Content-Type: application/json' \
+        -X POST "http://127.0.0.1:9200/_security/user/${INGEST_USERNAME}" \
+        -d "$user_payload")
+    printf '%s\n' "$response"
+    if echo "$response" | jq -e '.created == true or .created == false' >/dev/null 2>&1; then
+        log_info "Ingest credentials ready for ${INGEST_USERNAME}"
+    else
+        fatal "Failed to create ingest user"
+    fi
+}
+
+start_elasticsearch_stack() {
+    print_section "Starting Elasticsearch"
+    (cd "$ELK_ROOT" && "${COMPOSE_CMD[@]}" pull)
+    (cd "$ELK_ROOT" && "${COMPOSE_CMD[@]}" up -d --remove-orphans elasticsearch)
+    (cd "$ELK_ROOT" && "${COMPOSE_CMD[@]}" ps)
+}
+
+start_remaining_stack() {
+    print_section "Starting Logstash, Kibana, and Nginx"
+    (cd "$ELK_ROOT" && "${COMPOSE_CMD[@]}" up -d --remove-orphans logstash kibana nginx)
+    (cd "$ELK_ROOT" && "${COMPOSE_CMD[@]}" ps)
+}
+
+wait_for_kibana() {
+    print_section "Waiting for Kibana"
+    local attempt=0
+    while (( attempt < 60 )); do
+        local status
+        status=$(curl -sS http://127.0.0.1:5601/api/status 2>/dev/null | jq -r '.status.overall.level' 2>/dev/null || echo "unknown")
+        printf '[INFO] attempt %02d: kibana status=%s\n' "$attempt" "$status"
+        if [[ "$status" == "available" ]]; then
+            log_info "Kibana is available"
+            return
+        fi
+        sleep 5
+        ((attempt++))
+    done
+    fatal "Kibana did not become ready within timeout"
 }
 
 deploy_elasticsearch_templates() {
@@ -778,9 +900,12 @@ main() {
     generate_certificates
     create_docker_compose
     validate_logstash_configs
-    start_stack
+    start_elasticsearch_stack
     wait_for_elasticsearch
+    provision_ingest_credentials
     deploy_elasticsearch_templates
+    start_remaining_stack
+    wait_for_kibana
     import_kibana_dashboards
     postflight_checks
     print_section "Deployment Complete"

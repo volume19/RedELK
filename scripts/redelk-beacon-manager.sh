@@ -5,10 +5,37 @@
 set -euo pipefail
 
 # Configuration
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+readonly SCRIPT_DIR
+readonly ENV_FILE="${SCRIPT_DIR}/../elkserver/.env"
+
+load_elastic_password() {
+    if [[ -n "${ELASTIC_PASSWORD:-}" ]]; then
+        printf '%s' "${ELASTIC_PASSWORD}"
+        return 0
+    fi
+
+    if [[ -f "${ENV_FILE}" ]]; then
+        local value=""
+        while IFS='=' read -r key val; do
+            if [[ "${key}" == "ELASTIC_PASSWORD" ]]; then
+                value=${val%$'\r'}
+            fi
+        done <"${ENV_FILE}"
+
+        if [[ -n "${value}" ]]; then
+            printf '%s' "${value}"
+            return 0
+        fi
+    fi
+
+    printf '%s' "RedElk2024Secure"
+}
+
 ES_HOST="${ES_HOST:-localhost}"
 ES_PORT="${ES_PORT:-9200}"
 ES_USER="${ES_USER:-elastic}"
-ES_PASS="${ELASTIC_PASSWORD:-changeme}"
+ES_PASS="$(load_elastic_password)"
 
 # Colors
 RED='\033[0;31m'

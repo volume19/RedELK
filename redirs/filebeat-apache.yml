@@ -18,7 +18,7 @@ filebeat.inputs:
         type: redirtraffic
     redir:
       program: apache
-  fields_under_root: false
+  fields_under_root: true
 
 # Apache SSL Access Logs
 - type: filestream
@@ -36,12 +36,14 @@ filebeat.inputs:
     redir:
       program: apache
       ssl: true
-  fields_under_root: false
+  fields_under_root: true
 
 # Output to RedELK Logstash
 output.logstash:
-  hosts: ['REDELK_SERVER_IP:5044']
-  ssl.enabled: false
+  hosts: ['REDELK_HOST:5044']
+  ssl.enabled: true
+  ssl.verification_mode: certificate
+  ssl.certificate_authorities: ['/etc/filebeat/certs/redelk-ca.crt']
   bulk_max_size: 2048
 
 # Processors

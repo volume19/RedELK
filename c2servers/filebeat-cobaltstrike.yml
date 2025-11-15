@@ -19,7 +19,7 @@ filebeat.inputs:
       program: cobaltstrike
       log:
         type: beacon
-  fields_under_root: false
+  fields_under_root: true
   multiline:
     type: pattern
     pattern: '^\d{2}/\d{2} \d{2}:\d{2}:\d{2}'
@@ -43,7 +43,7 @@ filebeat.inputs:
       program: cobaltstrike
       log:
         type: events
-  fields_under_root: false
+  fields_under_root: true
 
 # Cobalt Strike Web Logs
 - type: filestream
@@ -62,7 +62,7 @@ filebeat.inputs:
       program: cobaltstrike
       log:
         type: weblog
-  fields_under_root: false
+  fields_under_root: true
 
 # Cobalt Strike Downloads Log
 - type: filestream
@@ -81,7 +81,7 @@ filebeat.inputs:
       program: cobaltstrike
       log:
         type: downloads
-  fields_under_root: false
+  fields_under_root: true
 
 # Cobalt Strike Keystrokes Log
 - type: filestream
@@ -100,7 +100,7 @@ filebeat.inputs:
       program: cobaltstrike
       log:
         type: keystrokes
-  fields_under_root: false
+  fields_under_root: true
 
 # Cobalt Strike Screenshots Log (CS 4.2+)
 - type: filestream
@@ -119,12 +119,14 @@ filebeat.inputs:
       program: cobaltstrike
       log:
         type: screenshots
-  fields_under_root: false
+  fields_under_root: true
 
 # Output to RedELK Logstash
 output.logstash:
-  hosts: ['REDELK_SERVER_IP:5044']
-  ssl.enabled: false
+  hosts: ['REDELK_HOST:5044']
+  ssl.enabled: true
+  ssl.verification_mode: certificate
+  ssl.certificate_authorities: ['/etc/filebeat/certs/redelk-ca.crt']
   bulk_max_size: 2048
 
 # Processors

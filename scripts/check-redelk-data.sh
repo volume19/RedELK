@@ -54,7 +54,13 @@ echo ""
 
 echo "[4] Checking Filebeat connections to Logstash..."
 echo "Logstash should be listening on port 5044:"
-sudo netstat -tunlp | grep 5044 || ss -tunlp | grep 5044
+if ss -tunlp 2>/dev/null | grep -q 5044; then
+    ss -tunlp 2>/dev/null | grep 5044
+elif command -v netstat >/dev/null 2>&1; then
+    netstat -tunlp 2>/dev/null | grep 5044 || echo "No listener found on 5044"
+else
+    echo "netstat/ss unavailable - unable to verify port 5044"
+fi
 echo ""
 
 echo "[5] Check Logstash recent logs for Filebeat connections..."

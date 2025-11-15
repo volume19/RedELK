@@ -18,7 +18,7 @@ filebeat.inputs:
       program: poshc2
       log:
         type: server
-  fields_under_root: false
+  fields_under_root: true
   multiline:
     type: pattern
     pattern: '^\d{4}-\d{2}-\d{2}'
@@ -41,7 +41,7 @@ filebeat.inputs:
       program: poshc2
       log:
         type: implant
-  fields_under_root: false
+  fields_under_root: true
 
 # PoshC2 Task Logs
 - type: filestream
@@ -59,7 +59,7 @@ filebeat.inputs:
       program: poshc2
       log:
         type: tasks
-  fields_under_root: false
+  fields_under_root: true
 
 # PoshC2 C2 Server Log
 - type: filestream
@@ -77,12 +77,14 @@ filebeat.inputs:
       program: poshc2
       log:
         type: c2server
-  fields_under_root: false
+  fields_under_root: true
 
 # Output to RedELK Logstash
 output.logstash:
-  hosts: ['REDELK_SERVER_IP:5044']
-  ssl.enabled: false
+  hosts: ['REDELK_HOST:5044']
+  ssl.enabled: true
+  ssl.verification_mode: certificate
+  ssl.certificate_authorities: ['/etc/filebeat/certs/redelk-ca.crt']
   bulk_max_size: 2048
 
 # Processors

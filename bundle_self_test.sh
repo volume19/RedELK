@@ -47,13 +47,18 @@ readonly -a EXPECTED_CONF_FILES=(
     "61-enrich-cdn.conf"
     "62-enrich-useragent.conf"
     "70-detection-threats.conf"
+    "80-target-index.conf"
     "90-outputs.conf"
 )
 
 readonly -a EXPECTED_TEMPLATE_FILES=(
     "alarm-template.json"
+    "credentials-template.json"
+    "ioc-template.json"
+    "redelk-template.json"
     "redirtraffic-template.json"
     "rtops-template.json"
+    "screenshots-template.json"
 )
 
 readonly -a EXPECTED_C2_CONFIGS=(
@@ -73,6 +78,7 @@ readonly -a EXPECTED_HELPER_SCRIPTS=(
     "deploy-filebeat-redir.sh"
     "redelk-beacon-manager.sh"
     "redelk-health-check.sh"
+    "redelk-smoke-test.sh"
     "test-data-generator.sh"
     "update-threat-feeds.sh"
     "verify-deployment.sh"
