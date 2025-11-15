@@ -5,16 +5,52 @@
 set -euo pipefail
 
 # Configuration
-readonly FEED_DIR="/opt/RedELK/elkserver/logstash/threat-feeds"
-readonly LOG_FILE="/var/log/redelk_feed_update.log"
-readonly TEMP_DIR="/tmp/redelk_feeds_$$"
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+readonly SCRIPT_DIR
+readonly ENV_FILE="${SCRIPT_DIR}/../elkserver/.env"
 
-# Create temp directory
-mkdir -p "$TEMP_DIR"
-trap "rm -rf $TEMP_DIR" EXIT
+load_env_value() {
+    local key="$1"
+    local default_value="${2:-}"
+    local env_override
+    env_override=$(printenv "$key" 2>/dev/null || true)
+    if [[ -n "$env_override" ]]; then
+        printf '%s' "$env_override"
+        return 0
+    fi
+
+    if [[ -f "$ENV_FILE" ]]; then
+        local value=""
+        while IFS='=' read -r name val; do
+            if [[ "$name" == "$key" ]]; then
+                value=${val%$'\r'}
+                break
+            fi
+        done <"$ENV_FILE"
+
+        if [[ -n "$value" ]]; then
+            printf '%s' "$value"
+            return 0
+        fi
+    fi
+
+    printf '%s' "$default_value"
+}
+
+readonly REDELK_PATH="$(load_env_value REDELK_PATH "/opt/RedELK")"
+readonly FEED_DIR="${REDELK_PATH}/elkserver/logstash/threat-feeds"
+readonly LOG_DIR="${REDELK_PATH}/elkserver/logs"
+readonly LOG_FILE="${LOG_DIR}/threat-feed-update.log"
+readonly TEMP_DIR="$(mktemp -d)"
+
+cleanup() {
+    rm -rf "$TEMP_DIR"
+}
+trap cleanup EXIT
 
 # Logging function
 log() {
+    mkdir -p "$LOG_DIR"
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
 }
 
@@ -166,10 +202,11 @@ reload_logstash() {
 
 # Main execution
 main() {
-    log "Starting threat feed update..."
-
-    # Ensure feed directory exists
+    # Ensure directories exist before logging
     mkdir -p "$FEED_DIR"
+    mkdir -p "$LOG_DIR"
+
+    log "Starting threat feed update..."
 
     # Update all feeds
     update_tor_nodes

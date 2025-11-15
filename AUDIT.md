@@ -22,6 +22,7 @@ This report captures the most impactful runtime, configuration, and tooling risk
 
 ## Configuration consistency
 - **Hard-coded Elasticsearch credentials (resolved):** Operational diagnostics and health tooling source credentials from the deployment `.env`, honoring operator overrides instead of relying on a hard-coded password.【F:scripts/check-redelk-data.sh†L1-L70】【F:scripts/redelk-health-check.sh†L1-L180】【F:scripts/verify-deployment.sh†L1-L312】【F:redelk_ubuntu_deploy.sh†L432-L452】
+- **Threat feed updater path alignment (resolved):** Automated feed refreshes look up the installed RedELK root from the `.env` file so custom installation paths continue to populate Logstash threat feeds and logs without manual edits.【F:scripts/update-threat-feeds.sh†L1-L120】
 
 ## Follow-up recommendations
 1. Maintain parity between bundle layouts and Logstash pipeline paths whenever threat-feed assets move.
