@@ -47,13 +47,18 @@ readonly -a EXPECTED_CONF_FILES=(
     "61-enrich-cdn.conf"
     "62-enrich-useragent.conf"
     "70-detection-threats.conf"
+    "80-target-index.conf"
     "90-outputs.conf"
 )
 
 readonly -a EXPECTED_TEMPLATE_FILES=(
     "alarm-template.json"
+    "credentials-template.json"
+    "ioc-template.json"
+    "redelk-template.json"
     "redirtraffic-template.json"
     "rtops-template.json"
+    "screenshots-template.json"
 )
 
 readonly -a EXPECTED_C2_CONFIGS=(
@@ -69,8 +74,11 @@ readonly -a EXPECTED_REDIR_CONFIGS=(
 
 readonly -a EXPECTED_HELPER_SCRIPTS=(
     "check-redelk-data.sh"
+    "deploy-filebeat-c2.sh"
+    "deploy-filebeat-redir.sh"
     "redelk-beacon-manager.sh"
     "redelk-health-check.sh"
+    "redelk-smoke-test.sh"
     "test-data-generator.sh"
     "update-threat-feeds.sh"
     "verify-deployment.sh"
@@ -90,6 +98,32 @@ print_section() {
     printf '============================================================\n'
 }
 
+check_dir_exists() {
+    local description="$1"
+    local path="$2"
+    printf '[INFO] Checking directory %-25s -> %s\n' "$description" "$path"
+    if [[ ! -d "$path" ]]; then
+        echo "[ERROR] Missing directory: $path" >&2
+        exit 1
+    fi
+}
+
+verify_expected_files() {
+    local description="$1"
+    local base_dir="$2"
+    shift 2
+    local -a files=("$@")
+    for name in "${files[@]}"; do
+        local full_path="${base_dir}/${name}"
+        if [[ ! -f "$full_path" ]]; then
+            echo "[ERROR] Missing ${description}: ${full_path}" >&2
+            exit 1
+        fi
+    done
+    printf '[INFO] Verified %s (%d files) in %s\n' "$description" "${#files[@]}" "$base_dir"
+}
+
+main() {
 readonly TARBALL="${1:-redelk-v3-deployment.tar.gz}"
 
 if [[ ! -f "$TARBALL" ]]; then
@@ -121,81 +155,46 @@ printf '[INFO] Bundle extracted to: %s\n' "$BUNDLE_DIR"
 printf '[INFO] Command: ls -1 %s | head -n 20\n' "$BUNDLE_DIR"
 (cd "$BUNDLE_DIR" && ls -1 | head -n 20)
 
+readonly SOURCE_LOGSTASH_CONF_DIR="${BUNDLE_DIR}/elkserver/logstash/conf.d"
+readonly SOURCE_TEMPLATE_DIR="${BUNDLE_DIR}/elkserver/elasticsearch/index-templates"
+readonly SOURCE_DASHBOARD_DIR="${BUNDLE_DIR}/elkserver/kibana/dashboards"
+readonly SOURCE_HELPER_DIR="${BUNDLE_DIR}/scripts"
+readonly SOURCE_THREAT_FEED_DIR="${BUNDLE_DIR}/elkserver/logstash/threat-feeds"
+readonly SOURCE_C2_DIR="${BUNDLE_DIR}/c2servers"
+readonly SOURCE_REDIR_DIR="${BUNDLE_DIR}/redirs"
+
 print_section "Validating Logstash Pipelines"
-printf '[INFO] Command: (cd %s && ls -1 *.conf | wc -l)\n' "$BUNDLE_DIR"
-conf_count=$(cd "$BUNDLE_DIR" && ls -1 *.conf | wc -l)
-printf 'conf_count=%s\n' "$conf_count"
-if (( conf_count != ${#EXPECTED_CONF_FILES[@]} )); then
-    echo "[ERROR] Expected ${#EXPECTED_CONF_FILES[@]} .conf files, found ${conf_count}" >&2
-    exit 1
-fi
-for name in "${EXPECTED_CONF_FILES[@]}"; do
-    if [[ ! -f "${BUNDLE_DIR}/${name}" ]]; then
-        echo "[ERROR] Missing pipeline config: ${name}" >&2
-        exit 1
-    fi
-done
+check_dir_exists "logstash/conf.d" "$SOURCE_LOGSTASH_CONF_DIR"
+verify_expected_files "Logstash pipeline config" "$SOURCE_LOGSTASH_CONF_DIR" "${EXPECTED_CONF_FILES[@]}"
+conf_count=$(find "$SOURCE_LOGSTASH_CONF_DIR" -maxdepth 1 -type f -name '*.conf' | wc -l)
+printf '[INFO] logstash/conf.d contains %s *.conf files\n' "$conf_count"
 
 print_section "Validating Elasticsearch Templates"
-printf '[INFO] Command: (cd %s && ls -1 *-template.json | wc -l)\n' "$BUNDLE_DIR"
-template_count=$(cd "$BUNDLE_DIR" && ls -1 *-template.json | wc -l)
-printf 'template_count=%s\n' "$template_count"
-if (( template_count != ${#EXPECTED_TEMPLATE_FILES[@]} )); then
-    echo "[ERROR] Expected ${#EXPECTED_TEMPLATE_FILES[@]} templates, found ${template_count}" >&2
-    exit 1
-fi
-for name in "${EXPECTED_TEMPLATE_FILES[@]}"; do
-    if [[ ! -f "${BUNDLE_DIR}/${name}" ]]; then
-        echo "[ERROR] Missing template: ${name}" >&2
-        exit 1
-    fi
-done
+check_dir_exists "elasticsearch/index-templates" "$SOURCE_TEMPLATE_DIR"
+verify_expected_files "Elasticsearch template" "$SOURCE_TEMPLATE_DIR" "${EXPECTED_TEMPLATE_FILES[@]}"
+template_count=$(find "$SOURCE_TEMPLATE_DIR" -maxdepth 1 -type f -name '*.json' | wc -l)
+printf '[INFO] index-templates contains %s *.json files\n' "$template_count"
 
 print_section "Validating Kibana Dashboards"
-printf '[INFO] Command: (cd %s && ls -1 *.ndjson | wc -l)\n' "$BUNDLE_DIR"
-dash_count=$(cd "$BUNDLE_DIR" && ls -1 *.ndjson | wc -l)
-printf 'dashboard_count=%s\n' "$dash_count"
-if (( dash_count < 1 )); then
-    echo "[ERROR] No .ndjson dashboards found" >&2
-    exit 1
-fi
-dashboard_path="${BUNDLE_DIR}/${DASHBOARD_FILE}"
-if [[ ! -f "$dashboard_path" ]]; then
-    echo "[ERROR] Missing dashboard file ${DASHBOARD_FILE}" >&2
-    exit 1
-fi
+check_dir_exists "kibana/dashboards" "$SOURCE_DASHBOARD_DIR"
+verify_expected_files "Kibana dashboard" "$SOURCE_DASHBOARD_DIR" "$DASHBOARD_FILE"
+dashboard_path="${SOURCE_DASHBOARD_DIR}/${DASHBOARD_FILE}"
 dashboard_size=$(stat -c '%s' "$dashboard_path")
-printf 'dashboard_size_bytes=%s\n' "$dashboard_size"
+printf '[INFO] %s size=%s bytes\n' "$DASHBOARD_FILE" "$dashboard_size"
 if (( dashboard_size < 2048 )); then
     echo "[ERROR] Dashboard ${DASHBOARD_FILE} too small (${dashboard_size} bytes)" >&2
     exit 1
 fi
 
 print_section "Validating Helper Assets"
-for name in "${EXPECTED_HELPER_SCRIPTS[@]}"; do
-    if [[ ! -f "${BUNDLE_DIR}/${name}" ]]; then
-        echo "[ERROR] Missing helper script ${name}" >&2
-        exit 1
-    fi
-done
-for name in "${EXPECTED_THREAT_FEEDS[@]}"; do
-    if [[ ! -f "${BUNDLE_DIR}/${name}" ]]; then
-        echo "[ERROR] Missing threat feed ${name}" >&2
-        exit 1
-    fi
-done
-for name in "${EXPECTED_C2_CONFIGS[@]}"; do
-    if [[ ! -f "${BUNDLE_DIR}/${name}" ]]; then
-        echo "[ERROR] Missing C2 Filebeat config ${name}" >&2
-        exit 1
-    fi
-done
-for name in "${EXPECTED_REDIR_CONFIGS[@]}"; do
-    if [[ ! -f "${BUNDLE_DIR}/${name}" ]]; then
-        echo "[ERROR] Missing redirector Filebeat config ${name}" >&2
-        exit 1
-    fi
-done
+check_dir_exists "scripts" "$SOURCE_HELPER_DIR"
+verify_expected_files "helper script" "$SOURCE_HELPER_DIR" "${EXPECTED_HELPER_SCRIPTS[@]}"
+check_dir_exists "logstash/threat-feeds" "$SOURCE_THREAT_FEED_DIR"
+verify_expected_files "threat feed" "$SOURCE_THREAT_FEED_DIR" "${EXPECTED_THREAT_FEEDS[@]}"
+check_dir_exists "c2servers" "$SOURCE_C2_DIR"
+verify_expected_files "C2 Filebeat config" "$SOURCE_C2_DIR" "${EXPECTED_C2_CONFIGS[@]}"
+check_dir_exists "redirs" "$SOURCE_REDIR_DIR"
+verify_expected_files "redirector Filebeat config" "$SOURCE_REDIR_DIR" "${EXPECTED_REDIR_CONFIGS[@]}"
 
 print_section "Validating Critical Scripts"
 for script in install-redelk.sh redelk_ubuntu_deploy.sh; do
@@ -209,3 +208,8 @@ done
 print_section "Self-Test Result"
 echo "All required bundle contents verified"
 printf 'Result: PASS\n'
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

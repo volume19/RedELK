@@ -1,7 +1,33 @@
 #!/bin/bash
 # Check if RedELK is receiving data
 
-ELASTIC_PASSWORD="RedElk2024Secure"
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+ENV_FILE="${SCRIPT_DIR}/../elkserver/.env"
+
+load_elastic_password() {
+    if [[ -n "${ELASTIC_PASSWORD:-}" ]]; then
+        printf '%s' "${ELASTIC_PASSWORD}"
+        return 0
+    fi
+
+    if [[ -f "${ENV_FILE}" ]]; then
+        local value=""
+        while IFS='=' read -r key val; do
+            if [[ "${key}" == "ELASTIC_PASSWORD" ]]; then
+                value=${val%$'\r'}
+            fi
+        done <"${ENV_FILE}"
+
+        if [[ -n "${value}" ]]; then
+            printf '%s' "${value}"
+            return 0
+        fi
+    fi
+
+    printf '%s' "RedElk2024Secure"
+}
+
+ELASTIC_PASSWORD="$(load_elastic_password)"
 
 echo "=========================================="
 echo "RedELK Data Flow Diagnostics"
@@ -28,7 +54,13 @@ echo ""
 
 echo "[4] Checking Filebeat connections to Logstash..."
 echo "Logstash should be listening on port 5044:"
-sudo netstat -tunlp | grep 5044 || ss -tunlp | grep 5044
+if ss -tunlp 2>/dev/null | grep -q 5044; then
+    ss -tunlp 2>/dev/null | grep 5044
+elif command -v netstat >/dev/null 2>&1; then
+    netstat -tunlp 2>/dev/null | grep 5044 || echo "No listener found on 5044"
+else
+    echo "netstat/ss unavailable - unable to verify port 5044"
+fi
 echo ""
 
 echo "[5] Check Logstash recent logs for Filebeat connections..."
@@ -48,3 +80,4 @@ echo "   - /opt/cobaltstrike/logs/*/beacon_*.log"
 echo "   - /opt/cobaltstrike/server/logs/*/beacon_*.log"
 echo "   - /home/*/cobaltstrike/*/server/logs/*/beacon_*.log"
 echo ""
+

@@ -2,7 +2,7 @@
 # RedELK Deployment Verification Script
 # Comprehensive checks to ensure all components are properly deployed
 
-set -euo pipefail
+set -uo pipefail
 
 # Colors
 RED='\033[0;31m'
@@ -12,9 +12,37 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration
-readonly REDELK_PATH="/opt/RedELK"
+readonly REDELK_PATH="${REDELK_ROOT:-${REDELK_PATH:-/opt/RedELK}}"
 readonly ES_USER="elastic"
-readonly ES_PASS="${ELASTIC_PASSWORD:-RedElk2024Secure}"
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+readonly SCRIPT_DIR
+readonly ENV_FILE="${SCRIPT_DIR}/../elkserver/.env"
+
+load_elastic_password() {
+    if [[ -n "${ELASTIC_PASSWORD:-}" ]]; then
+        printf '%s' "${ELASTIC_PASSWORD}"
+        return 0
+    fi
+
+    if [[ -f "${ENV_FILE}" ]]; then
+        local value=""
+        while IFS='=' read -r key val; do
+            if [[ "${key}" == "ELASTIC_PASSWORD" ]]; then
+                value=${val%$'\r'}
+            fi
+        done <"${ENV_FILE}"
+
+        if [[ -n "${value}" ]]; then
+            printf '%s' "${value}"
+            return 0
+        fi
+    fi
+
+    printf '%s' "RedElk2024Secure"
+}
+
+readonly ES_PASS="$(load_elastic_password)"
 
 # Counters
 CHECKS_PASSED=0
@@ -170,42 +198,49 @@ main() {
     echo -e "${BLUE}3. Directory Structure:${NC}"
     echo "-----------------------"
     check_dir "RedELK base" "$REDELK_PATH"
-    check_dir "Elasticsearch data" "$REDELK_PATH/elasticsearch-data"
+    check_dir "ELK stack root" "$REDELK_PATH/elkserver"
     check_dir "Certificates" "$REDELK_PATH/certs"
     check_dir "Logstash configs" "$REDELK_PATH/elkserver/logstash/conf.d"
     check_dir "Logstash pipelines" "$REDELK_PATH/elkserver/logstash/pipelines"
-    check_dir "Helper scripts" "$REDELK_PATH/scripts"
     check_dir "Index templates" "$REDELK_PATH/elkserver/elasticsearch/index-templates"
     check_dir "Kibana dashboards" "$REDELK_PATH/elkserver/kibana/dashboards"
     check_dir "Threat feeds" "$REDELK_PATH/elkserver/logstash/threat-feeds"
+    check_dir "Helper scripts" "$REDELK_PATH/scripts"
+    check_dir "C2 Filebeat configs" "$REDELK_PATH/c2servers"
+    check_dir "Redirector Filebeat configs" "$REDELK_PATH/redirs"
+    check_dir "Nginx config dir" "$REDELK_PATH/elkserver/nginx"
+    check_dir "Kibana config dir" "$REDELK_PATH/elkserver/config"
     echo ""
 
     echo -e "${BLUE}4. Configuration Files:${NC}"
     echo "-----------------------"
-    check_file "Docker Compose" "$REDELK_PATH/elkserver/docker/docker-compose.yml"
-    check_file "Docker env" "$REDELK_PATH/elkserver/docker/.env"
-    check_file "Nginx config" "$REDELK_PATH/elkserver/nginx/nginx.conf"
-    check_file "Kibana config" "$REDELK_PATH/elkserver/kibana/kibana.yml"
-    check_file "CA certificate" "$REDELK_PATH/certs/redelkCA.crt"
+    check_file "Docker Compose" "$REDELK_PATH/elkserver/docker-compose.yml"
+    check_file "Compose environment" "$REDELK_PATH/elkserver/.env"
+    check_file "Logstash settings" "$REDELK_PATH/elkserver/logstash/logstash.yml"
+    check_file "Logstash pipelines.yml" "$REDELK_PATH/elkserver/logstash/pipelines.yml"
+    check_file "Kibana config" "$REDELK_PATH/elkserver/config/kibana.yml"
+    check_file "Nginx config" "$REDELK_PATH/elkserver/nginx/kibana.conf"
+    check_file "Nginx htpasswd" "$REDELK_PATH/elkserver/nginx/htpasswd"
     check_file "Server certificate" "$REDELK_PATH/certs/elkserver.crt"
-    check_file "SSH key" "$REDELK_PATH/certs/sshkey"
+    check_file "Server key" "$REDELK_PATH/certs/elkserver.key"
     echo ""
 
-    echo -e "${BLUE}5. Deployment Packages:${NC}"
-    echo "-----------------------"
-    check_file "C2 servers package" "$REDELK_PATH/c2servers.tgz"
-    check_file "Redirectors package" "$REDELK_PATH/redirs.tgz"
-    echo ""
-
-    echo -e "${BLUE}6. Helper Scripts:${NC}"
+    echo -e "${BLUE}5. Helper Scripts:${NC}"
     echo "------------------"
     check_file "Health check script" "$REDELK_PATH/scripts/redelk-health-check.sh"
     check_file "Beacon manager script" "$REDELK_PATH/scripts/redelk-beacon-manager.sh"
     check_file "Threat feed updater" "$REDELK_PATH/scripts/update-threat-feeds.sh"
     check_file "Deployment verifier" "$REDELK_PATH/scripts/verify-deployment.sh"
+    check_file "C2 Filebeat deployer" "$REDELK_PATH/scripts/deploy-filebeat-c2.sh"
+    check_file "Redirector Filebeat deployer" "$REDELK_PATH/scripts/deploy-filebeat-redir.sh"
+    check_file "Test data generator" "$REDELK_PATH/scripts/test-data-generator.sh"
+    check_file "Data checker" "$REDELK_PATH/scripts/check-redelk-data.sh"
+    check_file "Kibana dashboard export" "$REDELK_PATH/elkserver/kibana/dashboards/redelk-main-dashboard.ndjson"
+    check_file "CDN threat feed" "$REDELK_PATH/elkserver/logstash/threat-feeds/cdn-ip-lists.txt"
+    check_file "TOR threat feed" "$REDELK_PATH/elkserver/logstash/threat-feeds/tor-exit-nodes.txt"
     echo ""
 
-    echo -e "${BLUE}7. Elasticsearch Components:${NC}"
+    echo -e "${BLUE}6. Elasticsearch Components:${NC}"
     echo "----------------------------"
     check_es_index_template "rtops"
     check_es_index_template "redirtraffic"
@@ -233,7 +268,7 @@ main() {
     esac
     echo ""
 
-    echo -e "${BLUE}8. Logstash Components:${NC}"
+    echo -e "${BLUE}7. Logstash Components:${NC}"
     echo "-----------------------"
     check_file "Input config" "$REDELK_PATH/elkserver/logstash/conf.d/10-input-filebeat.conf"
     check_file "Apache parser" "$REDELK_PATH/elkserver/logstash/conf.d/20-filter-redir-apache.conf"
@@ -248,7 +283,7 @@ main() {
     check_file "Output config" "$REDELK_PATH/elkserver/logstash/conf.d/90-outputs.conf"
     echo ""
 
-    echo -e "${BLUE}9. Filebeat Templates:${NC}"
+    echo -e "${BLUE}8. Filebeat Templates:${NC}"
     echo "----------------------"
     check_file "Cobalt Strike template" "$REDELK_PATH/c2servers/filebeat-cobaltstrike.yml"
     check_file "PoshC2 template" "$REDELK_PATH/c2servers/filebeat-poshc2.yml"
@@ -257,7 +292,7 @@ main() {
     check_file "HAProxy template" "$REDELK_PATH/redirs/filebeat-haproxy.yml"
     echo ""
 
-    echo -e "${BLUE}10. System Requirements:${NC}"
+    echo -e "${BLUE}9. System Requirements:${NC}"
     echo "------------------------"
     echo -n "Checking vm.max_map_count... "
     local map_count=$(sysctl -n vm.max_map_count 2>/dev/null)

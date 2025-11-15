@@ -2,7 +2,38 @@
 # RedELK Health Check Script
 # Monitors all RedELK components and reports status
 
-set -euo pipefail
+set -uo pipefail
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+readonly SCRIPT_DIR
+readonly ENV_FILE="${SCRIPT_DIR}/../elkserver/.env"
+
+load_elastic_password() {
+    if [[ -n "${ELASTIC_PASSWORD:-}" ]]; then
+        printf '%s' "${ELASTIC_PASSWORD}"
+        return 0
+    fi
+
+    if [[ -f "${ENV_FILE}" ]]; then
+        local value=""
+        while IFS='=' read -r key val; do
+            if [[ "${key}" == "ELASTIC_PASSWORD" ]]; then
+                value=${val%$'\r'}
+            fi
+        done <"${ENV_FILE}"
+
+        if [[ -n "${value}" ]]; then
+            printf '%s' "${value}"
+            return 0
+        fi
+    fi
+
+    printf '%s' "RedElk2024Secure"
+}
+
+readonly ES_PASS="$(load_elastic_password)"
+FAILURES=0
+WARNINGS=0
 
 # Colors for output
 RED='\033[0;31m'
@@ -28,6 +59,7 @@ check_service() {
         return 0
     else
         echo -e "${RED}✗${NC} Not responding on port $port"
+        ((FAILURES++))
         return 1
     fi
 }
@@ -44,9 +76,11 @@ check_container() {
         return 0
     elif docker ps --format "table {{.Names}}\t{{.Status}}" | grep -q "$container.*Up"; then
         echo -e "${YELLOW}⚠${NC} Running but not healthy"
+        ((WARNINGS++))
         return 1
     else
         echo -e "${RED}✗${NC} Not running or unhealthy"
+        ((FAILURES++))
         return 1
     fi
 }
@@ -57,7 +91,6 @@ echo "------------------"
 check_container "redelk-elasticsearch" "Elasticsearch"
 check_container "redelk-logstash" "Logstash"
 check_container "redelk-kibana" "Kibana"
-check_container "redelk-redis" "Redis"
 echo ""
 
 # Check services
@@ -66,13 +99,12 @@ echo "---------"
 check_service "elasticsearch" 9200 "Elasticsearch API"
 check_service "kibana" 5601 "Kibana UI"
 check_service "logstash" 5044 "Logstash Beats"
-check_service "redis" 6379 "Redis Cache"
 echo ""
 
 # Check Elasticsearch cluster health
 echo "Elasticsearch Cluster:"
 echo "---------------------"
-ES_HEALTH=$(curl -s -u elastic:${ELASTIC_PASSWORD:-changeme} http://localhost:9200/_cluster/health 2>/dev/null | jq -r '.status' 2>/dev/null || echo "unknown")
+ES_HEALTH=$(curl -s -u "elastic:${ES_PASS}" http://localhost:9200/_cluster/health 2>/dev/null | jq -r '.status' 2>/dev/null || echo "unknown")
 
 case "$ES_HEALTH" in
     "green")
@@ -91,7 +123,7 @@ echo ""
 echo "Indices:"
 echo "--------"
 for index in "rtops-*" "redirtraffic-*" "alarms-*"; do
-    COUNT=$(curl -s -u elastic:${ELASTIC_PASSWORD:-changeme} "http://localhost:9200/${index}/_count" 2>/dev/null | jq -r '.count' 2>/dev/null || echo "0")
+    COUNT=$(curl -s -u "elastic:${ES_PASS}" "http://localhost:9200/${index}/_count" 2>/dev/null | jq -r '.count' 2>/dev/null || echo "0")
     if [ "$COUNT" != "0" ]; then
         echo -e "$index: ${GREEN}$COUNT documents${NC}"
     else
@@ -103,7 +135,7 @@ done
 echo ""
 echo "Filebeat Agents:"
 echo "---------------"
-BEATS=$(curl -s -u elastic:${ELASTIC_PASSWORD:-changeme} "http://localhost:9200/.monitoring-beats-*/_search?size=0" -H 'Content-Type: application/json' -d '
+BEATS=$(curl -s -u "elastic:${ES_PASS}" "http://localhost:9200/.monitoring-beats-*/_search?size=0" -H 'Content-Type: application/json' -d '
 {
   "aggs": {
     "beats": {
@@ -117,6 +149,7 @@ BEATS=$(curl -s -u elastic:${ELASTIC_PASSWORD:-changeme} "http://localhost:9200/
 
 if [ -z "$BEATS" ]; then
     echo -e "${YELLOW}No Filebeat agents connected${NC}"
+    ((WARNINGS++))
 else
     echo "$BEATS" | while read -r beat; do
         echo -e "${GREEN}✓${NC} $beat"
@@ -132,11 +165,21 @@ if [ "$DISK_USAGE" -lt 80 ]; then
     echo -e "Docker storage: ${GREEN}${DISK_USAGE}% used${NC}"
 elif [ "$DISK_USAGE" -lt 90 ]; then
     echo -e "Docker storage: ${YELLOW}${DISK_USAGE}% used${NC}"
+    ((WARNINGS++))
 else
     echo -e "Docker storage: ${RED}${DISK_USAGE}% used${NC}"
+    ((FAILURES++))
 fi
 
 echo ""
+echo "Warnings: $WARNINGS"
+echo "Failures: $FAILURES"
 echo "======================================"
 echo "Health check complete"
 echo "======================================"
+
+if [ "$FAILURES" -gt 0 ]; then
+    exit 1
+elif [ "$WARNINGS" -gt 0 ]; then
+    exit 2
+fi

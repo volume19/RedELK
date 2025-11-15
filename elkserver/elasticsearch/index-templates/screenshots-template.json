@@ -1,0 +1,25 @@
+{
+  "index_patterns": ["screenshots-*"] ,
+  "template": {
+    "settings": {
+      "index": {
+        "number_of_shards": 1,
+        "number_of_replicas": 0,
+        "refresh_interval": "5s"
+      }
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "beacon.id": { "type": "keyword" },
+        "beacon.hostname": { "type": "keyword" },
+        "beacon.user": { "type": "keyword" },
+        "file.name": { "type": "keyword" },
+        "file.path": { "type": "text" },
+        "file.hash.sha256": { "type": "keyword" },
+        "c2.program": { "type": "keyword" },
+        "tags": { "type": "keyword" }
+      }
+    }
+  }
+}

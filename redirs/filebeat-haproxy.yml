@@ -17,12 +17,14 @@ filebeat.inputs:
         type: redirtraffic
     redir:
       program: haproxy
-  fields_under_root: false
+  fields_under_root: true
 
 # Output to RedELK Logstash
 output.logstash:
-  hosts: ['REDELK_SERVER_IP:5044']
-  ssl.enabled: false
+  hosts: ['REDELK_HOST:5044']
+  ssl.enabled: true
+  ssl.verification_mode: certificate
+  ssl.certificate_authorities: ['/etc/filebeat/certs/redelk-ca.crt']
   bulk_max_size: 2048
 
 # Processors

@@ -28,6 +28,51 @@ error_exit() {
     exit 1
 }
 
+prompt_redelk_host() {
+    local host="${REDELK_HOST:-}"
+    if [[ -n "$host" ]]; then
+        printf '%s' "$host"
+        return
+    fi
+
+    while [[ -z "$host" ]]; do
+        echo -ne "${CYAN}Enter RedELK collector hostname or IP:${NC} "
+        read -r host
+        [[ -z "$host" ]] && log_warn "Collector address is required"
+    done
+
+    printf '%s' "$host"
+}
+
+choose_ca_certificate() {
+    local candidate
+    if [[ -n "${REDELK_CA_CERT:-}" ]]; then
+        candidate="${REDELK_CA_CERT}"
+        if [[ -f "$candidate" ]]; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+        log_warn "REDELK_CA_CERT set but file not found: $candidate"
+    fi
+
+    for candidate in redelkCA.crt elkserver.crt "certs/elkserver.crt"; do
+        if [[ -f "$candidate" ]]; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+    done
+
+    while true; do
+        echo -ne "${CYAN}Path to RedELK TLS certificate (elkserver.crt):${NC} "
+        read -r candidate
+        if [[ -f "$candidate" ]]; then
+            printf '%s' "$candidate"
+            return 0
+        fi
+        log_error "Certificate not found at $candidate"
+    done
+}
+
 # Progress bar
 progress() {
     local duration=$1
@@ -184,22 +229,18 @@ echo -ne "${CYAN}Deploying RedELK configuration...${NC} "
 cp "$CONFIG_FILE" /etc/filebeat/filebeat.yml
 echo -e "${GREEN}✓${NC}"
 
-# Install certificates
-if [[ -f "redelkCA.crt" ]]; then
-    echo -ne "${CYAN}Installing CA certificate...${NC} "
-    mkdir -p /etc/filebeat/certs
-    cp redelkCA.crt /etc/filebeat/certs/
-    chmod 644 /etc/filebeat/certs/redelkCA.crt
-    echo -e "${GREEN}✓${NC}"
-fi
+# Configure Logstash endpoint
+LOGSTASH_HOST="$(prompt_redelk_host)"
+log_success "Using RedELK collector: ${CYAN}${LOGSTASH_HOST}${NC}"
+sed -i "s|REDELK_HOST|${LOGSTASH_HOST}|g" /etc/filebeat/filebeat.yml
 
-if [[ -f "elkserver.crt" ]]; then
-    echo -ne "${CYAN}Installing server certificate...${NC} "
-    mkdir -p /etc/filebeat/certs
-    cp elkserver.crt /etc/filebeat/certs/
-    chmod 644 /etc/filebeat/certs/elkserver.crt
-    echo -e "${GREEN}✓${NC}"
-fi
+# Install certificates
+CA_SOURCE="$(choose_ca_certificate)"
+echo -ne "${CYAN}Installing CA certificate from ${CA_SOURCE}...${NC} "
+mkdir -p /etc/filebeat/certs
+cp "${CA_SOURCE}" /etc/filebeat/certs/redelk-ca.crt
+chmod 644 /etc/filebeat/certs/redelk-ca.crt
+echo -e "${GREEN}✓${NC}"
 
 # Set permissions
 echo -ne "${CYAN}Setting file permissions...${NC} "

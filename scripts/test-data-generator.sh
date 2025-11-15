@@ -4,10 +4,37 @@
 
 set -euo pipefail
 
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+readonly SCRIPT_DIR
+readonly ENV_FILE="${SCRIPT_DIR}/../elkserver/.env"
+
+load_elastic_password() {
+    if [[ -n "${ELASTIC_PASSWORD:-}" ]]; then
+        printf '%s' "${ELASTIC_PASSWORD}"
+        return 0
+    fi
+
+    if [[ -f "${ENV_FILE}" ]]; then
+        local value=""
+        while IFS='=' read -r key val; do
+            if [[ "${key}" == "ELASTIC_PASSWORD" ]]; then
+                value=${val%$'\r'}
+            fi
+        done <"${ENV_FILE}"
+
+        if [[ -n "${value}" ]]; then
+            printf '%s' "${value}"
+            return 0
+        fi
+    fi
+
+    printf '%s' "RedElk2024Secure"
+}
+
 ES_HOST="localhost"
 ES_PORT="9200"
 ES_USER="elastic"
-ES_PASS="${ELASTIC_PASSWORD:-RedElk2024Secure}"
+ES_PASS="$(load_elastic_password)"
 
 echo "======================================"
 echo "     RedELK Test Data Generator"
@@ -35,9 +62,18 @@ generate_beacon_data() {
     cat <<EOF
 {
     "@timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)",
-    "fields": {
-        "logtype": "rtops",
-        "c2_program": "cobaltstrike"
+    "infra": {
+        "log": {
+            "type": "rtops"
+        }
+    },
+    "c2": {
+        "program": "cobaltstrike",
+        "log": {
+            "type": "beacon"
+        },
+        "operator": "operator1",
+        "teamserver": "teamserver.local"
     },
     "beacon": {
         "id": "$beacon_id",
@@ -49,11 +85,6 @@ generate_beacon_data() {
         "sleep": $sleep,
         "process": "explorer.exe",
         "pid": $((RANDOM % 10000 + 1000))
-    },
-    "c2": {
-        "program": "cobaltstrike",
-        "operator": "operator1",
-        "teamserver": "teamserver.local"
     },
     "message": "Beacon $beacon_id checkin from $hostname"
 }
@@ -71,9 +102,10 @@ generate_redir_data() {
     cat <<EOF
 {
     "@timestamp": "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)",
-    "fields": {
-        "infralogtype": "redirtraffic",
-        "redirprogram": "apache"
+    "infra": {
+        "log": {
+            "type": "redirtraffic"
+        }
     },
     "source": {
         "ip": "$source_ip",

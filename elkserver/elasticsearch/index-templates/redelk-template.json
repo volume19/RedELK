@@ -1,0 +1,33 @@
+{
+  "index_patterns": ["redelk-*"] ,
+  "template": {
+    "settings": {
+      "index": {
+        "number_of_shards": 1,
+        "number_of_replicas": 0,
+        "refresh_interval": "5s"
+      }
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "date" },
+        "message": { "type": "text" },
+        "tags": { "type": "keyword" },
+        "infra": {
+          "properties": {
+            "log": {
+              "properties": {
+                "type": { "type": "keyword" },
+                "subtype": { "type": "keyword" }
+              }
+            }
+          }
+        },
+        "source.ip": { "type": "ip" },
+        "event.action": { "type": "keyword" },
+        "event.dataset": { "type": "keyword" },
+        "event.module": { "type": "keyword" }
+      }
+    }
+  }
+}
