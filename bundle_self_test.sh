@@ -123,6 +123,7 @@ verify_expected_files() {
     printf '[INFO] Verified %s (%d files) in %s\n' "$description" "${#files[@]}" "$base_dir"
 }
 
+main() {
 readonly TARBALL="${1:-redelk-v3-deployment.tar.gz}"
 
 if [[ ! -f "$TARBALL" ]]; then
@@ -207,3 +208,8 @@ done
 print_section "Self-Test Result"
 echo "All required bundle contents verified"
 printf 'Result: PASS\n'
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

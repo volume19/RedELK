@@ -221,5 +221,7 @@ main() {
     log "Threat feed update completed"
 }
 
-# Run main function
-main "$@"
+# Run main function when executed directly
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

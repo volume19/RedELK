@@ -12,7 +12,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 # Configuration
-readonly REDELK_PATH="/opt/RedELK"
+readonly REDELK_PATH="${REDELK_ROOT:-${REDELK_PATH:-/opt/RedELK}}"
 readonly ES_USER="elastic"
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)

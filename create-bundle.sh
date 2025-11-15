@@ -159,38 +159,44 @@ copy_tree() {
     printf '[INFO] Copied %d item(s) for %s\n' "${#files_ref[@]}" "$label"
 }
 
-print_section "Preparing bundle directory"
-prepare_bundle
+main() {
+    print_section "Preparing bundle directory"
+    prepare_bundle
 
-print_section "Copying core scripts"
-copy_required_file "${SCRIPT_DIR}/VERSION" "${BUNDLE_DIR}/VERSION" 0644
-copy_required_file "${SCRIPT_DIR}/redelk_ubuntu_deploy.sh" "${BUNDLE_DIR}/redelk_ubuntu_deploy.sh" 0755
-copy_required_file "${SCRIPT_DIR}/install-redelk.sh" "${BUNDLE_DIR}/install-redelk.sh" 0755
+    print_section "Copying core scripts"
+    copy_required_file "${SCRIPT_DIR}/VERSION" "${BUNDLE_DIR}/VERSION" 0644
+    copy_required_file "${SCRIPT_DIR}/redelk_ubuntu_deploy.sh" "${BUNDLE_DIR}/redelk_ubuntu_deploy.sh" 0755
+    copy_required_file "${SCRIPT_DIR}/install-redelk.sh" "${BUNDLE_DIR}/install-redelk.sh" 0755
 
-print_section "Copying Logstash pipeline configs"
-copy_tree "Logstash pipeline configs" "elkserver/logstash/conf.d" 0644 PIPELINE_FILES
+    print_section "Copying Logstash pipeline configs"
+    copy_tree "Logstash pipeline configs" "elkserver/logstash/conf.d" 0644 PIPELINE_FILES
 
-print_section "Copying Elasticsearch templates"
-copy_tree "Elasticsearch templates" "elkserver/elasticsearch/index-templates" 0644 TEMPLATE_FILES
+    print_section "Copying Elasticsearch templates"
+    copy_tree "Elasticsearch templates" "elkserver/elasticsearch/index-templates" 0644 TEMPLATE_FILES
 
-print_section "Copying threat feeds"
-copy_tree "Threat feeds" "elkserver/logstash/threat-feeds" 0644 THREAT_FEED_FILES
+    print_section "Copying threat feeds"
+    copy_tree "Threat feeds" "elkserver/logstash/threat-feeds" 0644 THREAT_FEED_FILES
 
-print_section "Copying helper scripts"
-copy_tree "Helper scripts" "scripts" 0755 HELPER_SCRIPTS
+    print_section "Copying helper scripts"
+    copy_tree "Helper scripts" "scripts" 0755 HELPER_SCRIPTS
 
-print_section "Copying C2 Filebeat configs"
-copy_tree "C2 Filebeat configs" "c2servers" 0644 C2_CONFIGS
+    print_section "Copying C2 Filebeat configs"
+    copy_tree "C2 Filebeat configs" "c2servers" 0644 C2_CONFIGS
 
-print_section "Copying redirector Filebeat configs"
-copy_tree "Redirector Filebeat configs" "redirs" 0644 REDIR_CONFIGS
+    print_section "Copying redirector Filebeat configs"
+    copy_tree "Redirector Filebeat configs" "redirs" 0644 REDIR_CONFIGS
 
-print_section "Copying Kibana dashboards"
-copy_required_file "${SCRIPT_DIR}/elkserver/kibana/dashboards/${DASHBOARD_FILE}" "${BUNDLE_DIR}/elkserver/kibana/dashboards/${DASHBOARD_FILE}" 0644
+    print_section "Copying Kibana dashboards"
+    copy_required_file "${SCRIPT_DIR}/elkserver/kibana/dashboards/${DASHBOARD_FILE}" "${BUNDLE_DIR}/elkserver/kibana/dashboards/${DASHBOARD_FILE}" 0644
 
-print_section "Creating archive"
-tar -czf "$OUTPUT_TARBALL" "$BUNDLE_DIR"
-du -h "$OUTPUT_TARBALL"
+    print_section "Creating archive"
+    tar -czf "$OUTPUT_TARBALL" "$BUNDLE_DIR"
+    du -h "$OUTPUT_TARBALL"
 
-print_section "Bundle complete"
-printf 'Created %s\n' "$OUTPUT_TARBALL"
+    print_section "Bundle complete"
+    printf 'Created %s\n' "$OUTPUT_TARBALL"
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi
