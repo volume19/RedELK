@@ -52,14 +52,23 @@ readonly LS_JAVA_OPTS="${LS_JAVA_OPTS:--Xms1g -Xmx1g}"
 readonly LOG_FILE="/var/log/redelk_deploy.log"
 readonly RUN_TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
+readonly SOURCE_ROOT="${SCRIPT_DIR}"
+readonly SOURCE_LOGSTASH_CONF_DIR="${SOURCE_ROOT}/elkserver/logstash/conf.d"
+readonly SOURCE_TEMPLATE_DIR="${SOURCE_ROOT}/elkserver/elasticsearch/index-templates"
+readonly SOURCE_THREAT_FEED_DIR="${SOURCE_ROOT}/elkserver/logstash/threat-feeds"
+readonly SOURCE_DASHBOARD_DIR="${SOURCE_ROOT}/elkserver/kibana/dashboards"
+readonly SOURCE_HELPER_SCRIPT_DIR="${SOURCE_ROOT}/scripts"
+readonly SOURCE_C2_DIR="${SOURCE_ROOT}/c2servers"
+readonly SOURCE_REDIR_DIR="${SOURCE_ROOT}/redirs"
+
 readonly ELK_ROOT="${REDELK_PATH}/elkserver"
-readonly CONF_SRC_DIR="${ELK_ROOT}/logstash/conf.d"
+readonly CONF_DEST_DIR="${ELK_ROOT}/logstash/conf.d"
 readonly PIPELINE_DIR="${ELK_ROOT}/logstash/pipelines"
 readonly PIPELINE_CONFIG="${ELK_ROOT}/logstash/pipelines.yml"
-readonly TEMPLATE_DIR="${ELK_ROOT}/elasticsearch/templates"
-readonly DASHBOARD_DIR="${ELK_ROOT}/kibana/dashboards"
-readonly THREAT_FEED_DIR="${ELK_ROOT}/logstash/threat-feeds"
-readonly HELPER_SCRIPT_DIR="${REDELK_PATH}/scripts"
+readonly TEMPLATE_DEST_DIR="${ELK_ROOT}/elasticsearch/index-templates"
+readonly DASHBOARD_DEST_DIR="${ELK_ROOT}/kibana/dashboards"
+readonly THREAT_FEED_DEST_DIR="${ELK_ROOT}/logstash/threat-feeds"
+readonly HELPER_SCRIPT_DEST_DIR="${REDELK_PATH}/scripts"
 readonly C2_DEST_DIR="${REDELK_PATH}/c2servers"
 readonly REDIR_DEST_DIR="${REDELK_PATH}/redirs"
 readonly CONFIG_DIR="${ELK_ROOT}/config"
@@ -71,52 +80,13 @@ readonly LOGSTASH_LOG_DIR="${LOG_DIR_ROOT}/logstash"
 readonly KIBANA_LOG_DIR="${LOG_DIR_ROOT}/kibana"
 readonly NGINX_LOG_DIR="${LOG_DIR_ROOT}/nginx"
 
-readonly -a EXPECTED_CONF_FILES=(
-    "10-input-filebeat.conf"
-    "20-filter-redir-apache.conf"
-    "21-filter-redir-nginx.conf"
-    "22-filter-redir-haproxy.conf"
-    "50-filter-c2-cobaltstrike.conf"
-    "51-filter-c2-poshc2.conf"
-    "60-enrich-geoip.conf"
-    "61-enrich-cdn.conf"
-    "62-enrich-useragent.conf"
-    "70-detection-threats.conf"
-    "90-outputs.conf"
-)
-
-readonly -a EXPECTED_TEMPLATE_FILES=(
-    "alarm-template.json"
-    "redirtraffic-template.json"
-    "rtops-template.json"
-)
-
-readonly -a EXPECTED_THREAT_FEEDS=(
-    "cdn-ip-lists.txt"
-    "tor-exit-nodes.txt"
-)
-
-readonly -a EXPECTED_HELPER_SCRIPTS=(
-    "check-redelk-data.sh"
-    "redelk-beacon-manager.sh"
-    "redelk-health-check.sh"
-    "test-data-generator.sh"
-    "update-threat-feeds.sh"
-    "verify-deployment.sh"
-)
-
-readonly -a EXPECTED_C2_CONFIGS=(
-    "filebeat-cobaltstrike.yml"
-    "filebeat-poshc2.yml"
-)
-
-readonly -a EXPECTED_REDIR_CONFIGS=(
-    "filebeat-apache.yml"
-    "filebeat-haproxy.yml"
-    "filebeat-nginx.yml"
-)
-
-readonly DASHBOARD_FILE="redelk-main-dashboard.ndjson"
+LOGSTASH_CONF_FILES=()
+TEMPLATE_FILES=()
+THREAT_FEED_FILES=()
+HELPER_SCRIPT_FILES=()
+C2_CONFIG_FILES=()
+REDIR_CONFIG_FILES=()
+DASHBOARD_FILES=()
 
 COMPOSE_CMD=()
 
@@ -131,6 +101,69 @@ log_error() {
 fatal() {
     log_error "$*"
     exit 1
+}
+
+ensure_directory() {
+    local description="$1"
+    local path="$2"
+    if [[ ! -d "$path" ]]; then
+        fatal "${description} directory not found: ${path}"
+    fi
+}
+
+collect_files() {
+    local directory="$1"
+    local pattern="$2"
+    find "$directory" -maxdepth 1 -type f -name "$pattern" -printf '%f\n' | sort
+}
+
+require_nonempty() {
+    local description="$1"
+    shift
+    local -a files=("$@")
+    if (( ${#files[@]} == 0 )); then
+        fatal "No ${description} found in bundle"
+    fi
+}
+
+load_source_manifests() {
+    print_section "Inspecting Bundle Contents"
+
+    ensure_directory "Logstash configuration" "$SOURCE_LOGSTASH_CONF_DIR"
+    mapfile -t LOGSTASH_CONF_FILES < <(collect_files "$SOURCE_LOGSTASH_CONF_DIR" '*.conf')
+    require_nonempty "Logstash pipeline configs" "${LOGSTASH_CONF_FILES[@]}"
+
+    ensure_directory "Elasticsearch index templates" "$SOURCE_TEMPLATE_DIR"
+    mapfile -t TEMPLATE_FILES < <(collect_files "$SOURCE_TEMPLATE_DIR" '*.json')
+    require_nonempty "Elasticsearch index templates" "${TEMPLATE_FILES[@]}"
+
+    ensure_directory "Threat feed" "$SOURCE_THREAT_FEED_DIR"
+    mapfile -t THREAT_FEED_FILES < <(collect_files "$SOURCE_THREAT_FEED_DIR" '*.txt')
+    require_nonempty "threat feed files" "${THREAT_FEED_FILES[@]}"
+
+    ensure_directory "Helper script" "$SOURCE_HELPER_SCRIPT_DIR"
+    mapfile -t HELPER_SCRIPT_FILES < <(collect_files "$SOURCE_HELPER_SCRIPT_DIR" '*.sh')
+    require_nonempty "helper scripts" "${HELPER_SCRIPT_FILES[@]}"
+
+    ensure_directory "C2 Filebeat configuration" "$SOURCE_C2_DIR"
+    mapfile -t C2_CONFIG_FILES < <(collect_files "$SOURCE_C2_DIR" '*.yml')
+    require_nonempty "C2 Filebeat configs" "${C2_CONFIG_FILES[@]}"
+
+    ensure_directory "Redirector Filebeat configuration" "$SOURCE_REDIR_DIR"
+    mapfile -t REDIR_CONFIG_FILES < <(collect_files "$SOURCE_REDIR_DIR" '*.yml')
+    require_nonempty "redirector Filebeat configs" "${REDIR_CONFIG_FILES[@]}"
+
+    ensure_directory "Kibana dashboards" "$SOURCE_DASHBOARD_DIR"
+    mapfile -t DASHBOARD_FILES < <(collect_files "$SOURCE_DASHBOARD_DIR" '*.ndjson')
+    require_nonempty "Kibana dashboards" "${DASHBOARD_FILES[@]}"
+
+    log_info "Logstash configs: ${#LOGSTASH_CONF_FILES[@]}"
+    log_info "Elasticsearch templates: ${#TEMPLATE_FILES[@]}"
+    log_info "Threat feed files: ${#THREAT_FEED_FILES[@]}"
+    log_info "Helper scripts: ${#HELPER_SCRIPT_FILES[@]}"
+    log_info "C2 Filebeat configs: ${#C2_CONFIG_FILES[@]}"
+    log_info "Redirector Filebeat configs: ${#REDIR_CONFIG_FILES[@]}"
+    log_info "Kibana dashboards: ${#DASHBOARD_FILES[@]}"
 }
 
 print_section() {
@@ -236,81 +269,20 @@ preflight_checks() {
     log_info "Listing bundle directory contents (first 20 items):"
     (cd "$SCRIPT_DIR" && ls -1 | head -n 20)
 
-    local tools=(tar curl docker awk sed)
+    local tools=(tar curl docker awk sed jq)
     for tool in "${tools[@]}"; do
         if ! command -v "$tool" >/dev/null 2>&1; then
             fatal "Required tool '$tool' not found in PATH"
         fi
         log_info "Tool available: $tool -> $(command -v "$tool")"
     done
-
-    log_info "Command: (cd \"$SCRIPT_DIR\" && ls -1 *.conf | wc -l)"
-    local conf_count_src
-    conf_count_src=$(cd "$SCRIPT_DIR" && ls -1 *.conf | wc -l)
-    printf 'conf_count_src=%s\n' "$conf_count_src"
-    if (( conf_count_src != ${#EXPECTED_CONF_FILES[@]} )); then
-        fatal "Expected ${#EXPECTED_CONF_FILES[@]} pipeline configs, found ${conf_count_src}"
-    fi
-    for name in "${EXPECTED_CONF_FILES[@]}"; do
-        if [[ ! -f "${SCRIPT_DIR}/${name}" ]]; then
-            fatal "Missing required pipeline config: ${name}"
-        fi
-    done
-
-    log_info "Command: (cd \"$SCRIPT_DIR\" && ls -1 *-template.json | wc -l)"
-    local template_count
-    template_count=$(cd "$SCRIPT_DIR" && ls -1 *-template.json | wc -l)
-    printf 'template_count_src=%s\n' "$template_count"
-    if (( template_count != ${#EXPECTED_TEMPLATE_FILES[@]} )); then
-        fatal "Expected ${#EXPECTED_TEMPLATE_FILES[@]} template files, found ${template_count}"
-    fi
-    for name in "${EXPECTED_TEMPLATE_FILES[@]}"; do
-        if [[ ! -f "${SCRIPT_DIR}/${name}" ]]; then
-            fatal "Missing required template: ${name}"
-        fi
-    done
-
-    log_info "Command: (cd \"$SCRIPT_DIR\" && ls -1 *.ndjson | wc -l)"
-    local dash_count
-    dash_count=$(cd "$SCRIPT_DIR" && ls -1 *.ndjson | wc -l)
-    printf 'dashboard_count_src=%s\n' "$dash_count"
-    if (( dash_count < 1 )); then
-        fatal "At least one Kibana dashboard is required"
-    fi
-
-    local dashboard_path="${SCRIPT_DIR}/${DASHBOARD_FILE}"
-    if [[ ! -f "$dashboard_path" ]]; then
-        fatal "Missing dashboard file ${DASHBOARD_FILE}"
-    fi
-    local dash_size
-    dash_size=$(stat -c '%s' "$dashboard_path")
-    log_info "Dashboard ${DASHBOARD_FILE} size: ${dash_size} bytes"
-    if (( dash_size < 2048 )); then
-        fatal "Dashboard ${DASHBOARD_FILE} must be at least 2KB; found ${dash_size} bytes"
-    fi
-
-    for name in "${EXPECTED_HELPER_SCRIPTS[@]}"; do
-        if [[ ! -f "${SCRIPT_DIR}/${name}" ]]; then
-            fatal "Missing helper script ${name}"
-        fi
-    done
-
-    for name in "${EXPECTED_THREAT_FEEDS[@]}"; do
-        if [[ ! -f "${SCRIPT_DIR}/${name}" ]]; then
-            fatal "Missing threat feed ${name}"
-        fi
-    done
-    for name in "${EXPECTED_C2_CONFIGS[@]}"; do
-        if [[ ! -f "${SCRIPT_DIR}/${name}" ]]; then
-            fatal "Missing C2 Filebeat config ${name}"
-        fi
-    done
-
-    for name in "${EXPECTED_REDIR_CONFIGS[@]}"; do
-        if [[ ! -f "${SCRIPT_DIR}/${name}" ]]; then
-            fatal "Missing redirector Filebeat config ${name}"
-        fi
-    done
+    log_info "Bundle includes ${#LOGSTASH_CONF_FILES[@]} Logstash pipelines"
+    log_info "Bundle includes ${#TEMPLATE_FILES[@]} Elasticsearch templates"
+    log_info "Bundle includes ${#THREAT_FEED_FILES[@]} threat feed files"
+    log_info "Bundle includes ${#HELPER_SCRIPT_FILES[@]} helper scripts"
+    log_info "Bundle includes ${#C2_CONFIG_FILES[@]} C2 Filebeat configs"
+    log_info "Bundle includes ${#REDIR_CONFIG_FILES[@]} redirector Filebeat configs"
+    log_info "Bundle includes ${#DASHBOARD_FILES[@]} Kibana dashboards"
 }
 
 prepare_directories() {
@@ -318,12 +290,12 @@ prepare_directories() {
     local dirs=(
         "$REDELK_PATH"
         "$ELK_ROOT"
-        "$CONF_SRC_DIR"
+        "$CONF_DEST_DIR"
         "$PIPELINE_DIR"
-        "$TEMPLATE_DIR"
-        "$DASHBOARD_DIR"
-        "$THREAT_FEED_DIR"
-        "$HELPER_SCRIPT_DIR"
+        "$TEMPLATE_DEST_DIR"
+        "$DASHBOARD_DEST_DIR"
+        "$THREAT_FEED_DEST_DIR"
+        "$HELPER_SCRIPT_DEST_DIR"
         "$C2_DEST_DIR"
         "$REDIR_DEST_DIR"
         "$CONFIG_DIR"
@@ -343,66 +315,64 @@ prepare_directories() {
 
 copy_category() {
     local label="$1"
-    local dest="$2"
-    local mode="$3"
-    local pattern="$4"
+    local src_dir="$2"
+    local dest_dir="$3"
+    local mode="$4"
     shift 4
-    local expected=("$@")
-    log_info "Deploying ${label} to ${dest}"
-    mkdir -p "$dest"
-    find "$dest" -maxdepth 1 -type f -name "$pattern" -exec rm -f {} +
+    local files=("$@")
+    log_info "Deploying ${label} to ${dest_dir}"
+    mkdir -p "$dest_dir"
     local copied=0
-    for name in "${expected[@]}"; do
-        local src="${SCRIPT_DIR}/${name}"
+    for name in "${files[@]}"; do
+        local src="${src_dir}/${name}"
+        local dest="${dest_dir}/${name}"
         if [[ ! -f "$src" ]]; then
             fatal "Missing source file ${src} for ${label}"
         fi
-        printf '[INFO] Copy %s -> %s/%s\n' "$src" "$dest" "$name"
-        install -m "$mode" "$src" "${dest}/${name}"
+        printf '[INFO] Copy %s -> %s\n' "$src" "$dest"
+        install -m "$mode" "$src" "$dest"
         ((copied++))
     done
-    local dest_count
-    dest_count=$(find "$dest" -maxdepth 1 -type f -name "$pattern" | wc -l)
-    log_info "${label}: expected ${copied}, found ${dest_count} files in ${dest}"
-    if (( dest_count != copied )); then
-        fatal "Count mismatch for ${label}: expected ${copied}, found ${dest_count}"
+    local verified=0
+    for name in "${files[@]}"; do
+        if [[ -f "${dest_dir}/${name}" ]]; then
+            ((verified++))
+        fi
+    done
+    log_info "${label}: deployed ${verified} file(s)"
+    if (( verified != copied )); then
+        fatal "Deployment mismatch for ${label}: copied ${copied}, verified ${verified}"
     fi
 }
 
-copy_dashboard() {
+copy_dashboards() {
     log_info "Deploying Kibana dashboards"
-    local src="${SCRIPT_DIR}/${DASHBOARD_FILE}"
-    local dest="${DASHBOARD_DIR}/${DASHBOARD_FILE}"
-    local size
-    size=$(stat -c '%s' "$src")
-    printf '[INFO] Copy %s -> %s (%s bytes)\n' "$src" "$dest" "$size"
-    install -m 0644 "$src" "$dest"
-    log_info "Command: ls -1 ${DASHBOARD_DIR}/*.ndjson | wc -l"
-    local count
-    count=$(ls -1 "${DASHBOARD_DIR}"/*.ndjson | wc -l)
-    printf 'dashboard_count_dst=%s\n' "$count"
-    if (( count < 1 )); then
-        fatal "No dashboards found in ${DASHBOARD_DIR} after copy"
+    mkdir -p "$DASHBOARD_DEST_DIR"
+    local copied=0
+    for name in "${DASHBOARD_FILES[@]}"; do
+        local src="${SOURCE_DASHBOARD_DIR}/${name}"
+        local dest="${DASHBOARD_DEST_DIR}/${name}"
+        local size
+        size=$(stat -c '%s' "$src")
+        printf '[INFO] Copy %s -> %s (%s bytes)\n' "$src" "$dest" "$size"
+        install -m 0644 "$src" "$dest"
+        ((copied++))
+    done
+    if (( copied == 0 )); then
+        fatal "No Kibana dashboards copied"
     fi
+    log_info "Deployed ${copied} Kibana dashboard file(s)"
 }
 
 copy_deployment_files() {
     print_section "Copying Bundle Artifacts"
-    copy_category "Logstash pipeline configs" "$CONF_SRC_DIR" 0644 '*.conf' "${EXPECTED_CONF_FILES[@]}"
-    log_info "Command: ls -1 ${CONF_SRC_DIR}/*.conf | wc -l"
-    local conf_count_dst
-    conf_count_dst=$(ls -1 "${CONF_SRC_DIR}"/*.conf | wc -l)
-    printf 'conf_count_conf_d=%s\n' "$conf_count_dst"
-    if (( conf_count_dst != ${#EXPECTED_CONF_FILES[@]} )); then
-        fatal "conf.d count mismatch: expected ${#EXPECTED_CONF_FILES[@]}, found ${conf_count_dst}"
-    fi
-
-    copy_category "Elasticsearch templates" "$TEMPLATE_DIR" 0644 '*.json' "${EXPECTED_TEMPLATE_FILES[@]}"
-    copy_category "Threat feeds" "$THREAT_FEED_DIR" 0644 '*.txt' "${EXPECTED_THREAT_FEEDS[@]}"
-    copy_category "Helper scripts" "$HELPER_SCRIPT_DIR" 0755 '*.sh' "${EXPECTED_HELPER_SCRIPTS[@]}"
-    copy_category "C2 Filebeat configurations" "$C2_DEST_DIR" 0644 '*.yml' "${EXPECTED_C2_CONFIGS[@]}"
-    copy_category "Redirector Filebeat configurations" "$REDIR_DEST_DIR" 0644 '*.yml' "${EXPECTED_REDIR_CONFIGS[@]}"
-    copy_dashboard
+    copy_category "Logstash pipeline configs" "$SOURCE_LOGSTASH_CONF_DIR" "$CONF_DEST_DIR" 0644 "${LOGSTASH_CONF_FILES[@]}"
+    copy_category "Elasticsearch index templates" "$SOURCE_TEMPLATE_DIR" "$TEMPLATE_DEST_DIR" 0644 "${TEMPLATE_FILES[@]}"
+    copy_category "Threat feeds" "$SOURCE_THREAT_FEED_DIR" "$THREAT_FEED_DEST_DIR" 0644 "${THREAT_FEED_FILES[@]}"
+    copy_category "Helper scripts" "$SOURCE_HELPER_SCRIPT_DIR" "$HELPER_SCRIPT_DEST_DIR" 0755 "${HELPER_SCRIPT_FILES[@]}"
+    copy_category "C2 Filebeat configurations" "$SOURCE_C2_DIR" "$C2_DEST_DIR" 0644 "${C2_CONFIG_FILES[@]}"
+    copy_category "Redirector Filebeat configurations" "$SOURCE_REDIR_DIR" "$REDIR_DEST_DIR" 0644 "${REDIR_CONFIG_FILES[@]}"
+    copy_dashboards
 }
 
 render_logstash_settings() {
@@ -425,8 +395,8 @@ deploy_logstash_configs() {
     mkdir -p "$PIPELINE_DIR"
     find "$PIPELINE_DIR" -maxdepth 1 -type f -name '*.conf' -exec rm -f {} +
     local deployed=0
-    for name in "${EXPECTED_CONF_FILES[@]}"; do
-        local src="${CONF_SRC_DIR}/${name}"
+    for name in "${LOGSTASH_CONF_FILES[@]}"; do
+        local src="${CONF_DEST_DIR}/${name}"
         local dest="${PIPELINE_DIR}/${name}"
         if [[ ! -f "$src" ]]; then
             fatal "Missing source pipeline ${src}"
@@ -443,7 +413,7 @@ deploy_logstash_configs() {
         fatal "Logstash pipeline deployment mismatch"
     fi
     log_info "Pipeline load order:"
-    for name in "${EXPECTED_CONF_FILES[@]}"; do
+    for name in "${LOGSTASH_CONF_FILES[@]}"; do
         printf '  %s\n' "$name"
     done
 }
@@ -574,8 +544,8 @@ services:
         hard: 65536
     volumes:
       - elasticsearch-data:/usr/share/elasticsearch/data
-      - ./elasticsearch/templates:/usr/share/elasticsearch/templates:ro
-      - ./certs:/usr/share/elasticsearch/config/certs:ro
+      - ./elasticsearch/index-templates:/usr/share/elasticsearch/config/index-templates:ro
+      - ../certs:/usr/share/elasticsearch/config/certs:ro
       - ./logs/elasticsearch:/usr/share/elasticsearch/logs
     ports:
       - "127.0.0.1:9200:9200"
@@ -601,8 +571,8 @@ services:
       - ./logstash/pipelines:/usr/share/logstash/pipeline:ro
       - ./logstash/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
       - ./logstash/pipelines.yml:/usr/share/logstash/config/pipelines.yml:ro
-      - ./elasticsearch/templates:/usr/share/logstash/config/templates:ro
-      - ./threat-feeds:/usr/share/logstash/config/threat-feeds:ro
+      - ./elasticsearch/index-templates:/usr/share/logstash/config/index-templates:ro
+      - ./logstash/threat-feeds:/usr/share/logstash/config/threat-feeds:ro
       - logstash-data:/usr/share/logstash/data
       - ./logs/logstash:/usr/share/logstash/logs
     ports:
@@ -653,7 +623,7 @@ services:
     volumes:
       - ./nginx/kibana.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/htpasswd:/etc/nginx/htpasswd:ro
-      - ./certs:/etc/nginx/certs:ro
+      - ../certs:/etc/nginx/certs:ro
       - ./logs/nginx:/var/log/nginx
     ports:
       - "80:80"
@@ -715,8 +685,8 @@ wait_for_elasticsearch() {
 
 deploy_elasticsearch_templates() {
     print_section "Deploying Elasticsearch Index Templates"
-    for name in "${EXPECTED_TEMPLATE_FILES[@]}"; do
-        local file="${TEMPLATE_DIR}/${name}"
+    for name in "${TEMPLATE_FILES[@]}"; do
+        local file="${TEMPLATE_DEST_DIR}/${name}"
         local template_name="${name%.json}"
         log_info "Uploading template ${template_name} from ${file}"
         local response
@@ -733,19 +703,24 @@ deploy_elasticsearch_templates() {
 
 import_kibana_dashboards() {
     print_section "Importing Kibana Dashboards"
-    local path="${DASHBOARD_DIR}/${DASHBOARD_FILE}"
-    local size
-    size=$(stat -c '%s' "$path")
-    log_info "Importing ${path} (${size} bytes)"
-    local response
-    response=$(curl -sS -u "elastic:${ELASTIC_PASSWORD}" \
-        -H 'kbn-xsrf: redelk' \
-        -F file=@"${path}" \
-        "http://127.0.0.1:5601/api/saved_objects/_import?overwrite=true")
-    printf '%s\n' "$response"
-    if ! echo "$response" | jq -e '.success == true' >/dev/null 2>&1; then
-        fatal "Kibana dashboard import failed"
-    fi
+    local imported=0
+    for name in "${DASHBOARD_FILES[@]}"; do
+        local path="${DASHBOARD_DEST_DIR}/${name}"
+        local size
+        size=$(stat -c '%s' "$path")
+        log_info "Importing ${path} (${size} bytes)"
+        local response
+        response=$(curl -sS -u "elastic:${ELASTIC_PASSWORD}" \
+            -H 'kbn-xsrf: redelk' \
+            -F file=@"${path}" \
+            "http://127.0.0.1:5601/api/saved_objects/_import?overwrite=true")
+        printf '%s\n' "$response"
+        if ! echo "$response" | jq -e '.success == true' >/dev/null 2>&1; then
+            fatal "Kibana dashboard import failed for ${name}"
+        fi
+        ((imported++))
+    done
+    log_info "Imported ${imported} Kibana dashboard file(s)"
 }
 
 postflight_checks() {
@@ -788,6 +763,7 @@ main() {
     print_section "RedELK ${REDELK_VERSION} Deployment"
     log_info "Start timestamp: ${RUN_TIMESTAMP}"
     log_info "Bundle path: ${SCRIPT_DIR}"
+    load_source_manifests
     detect_os
     install_dependencies
     ensure_docker

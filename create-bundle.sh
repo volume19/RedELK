@@ -65,6 +65,8 @@ readonly -a THREAT_FEED_FILES=(
 
 readonly -a HELPER_SCRIPTS=(
     "check-redelk-data.sh"
+    "deploy-filebeat-c2.sh"
+    "deploy-filebeat-redir.sh"
     "redelk-beacon-manager.sh"
     "redelk-health-check.sh"
     "test-data-generator.sh"
@@ -110,6 +112,7 @@ copy_required_file() {
         echo "[ERROR] Missing required file: $source" >&2
         exit 1
     fi
+    mkdir -p "$(dirname "$destination")"
     normalize_copy "$source" "$destination" "$mode"
     printf '[INFO] Copied %s -> %s\n' "$source" "$destination"
 }
@@ -126,14 +129,29 @@ prepare_bundle() {
     mkdir -p "$BUNDLE_DIR"
 }
 
-declare -a sections=(
-    "Logstash pipeline configs" "${SCRIPT_DIR}/elkserver/logstash/conf.d" 0644 "PIPELINE_FILES[@]"
-    "Elasticsearch templates" "${SCRIPT_DIR}/elkserver/elasticsearch/index-templates" 0644 "TEMPLATE_FILES[@]"
-    "Threat feeds" "${SCRIPT_DIR}/elkserver/logstash/threat-feeds" 0644 "THREAT_FEED_FILES[@]"
-    "Helper scripts" "${SCRIPT_DIR}/scripts" 0755 "HELPER_SCRIPTS[@]"
-    "C2 Filebeat configs" "${SCRIPT_DIR}/c2servers" 0644 "C2_CONFIGS[@]"
-    "Redirector Filebeat configs" "${SCRIPT_DIR}/redirs" 0644 "REDIR_CONFIGS[@]"
-)
+copy_tree() {
+    local label="$1"
+    local rel_path="$2"
+    local mode="$3"
+    local array_name="$4"
+    local src_dir="${SCRIPT_DIR}/${rel_path}"
+    local dest_dir="${BUNDLE_DIR}/${rel_path}"
+
+    if [[ ! -d "$src_dir" ]]; then
+        echo "[ERROR] Missing source directory: ${src_dir}" >&2
+        exit 1
+    fi
+
+    mkdir -p "$dest_dir"
+
+    # shellcheck disable=SC2178
+    declare -n files_ref="$array_name"
+    for name in "${files_ref[@]}"; do
+        copy_required_file "${src_dir}/${name}" "${dest_dir}/${name}" "$mode"
+    done
+
+    printf '[INFO] Copied %d item(s) for %s\n' "${#files_ref[@]}" "$label"
+}
 
 print_section "Preparing bundle directory"
 prepare_bundle
@@ -143,29 +161,26 @@ copy_required_file "${SCRIPT_DIR}/VERSION" "${BUNDLE_DIR}/VERSION" 0644
 copy_required_file "${SCRIPT_DIR}/redelk_ubuntu_deploy.sh" "${BUNDLE_DIR}/redelk_ubuntu_deploy.sh" 0755
 copy_required_file "${SCRIPT_DIR}/install-redelk.sh" "${BUNDLE_DIR}/install-redelk.sh" 0755
 
-for ((i=0; i<${#sections[@]}; i+=4)); do
-    local title="${sections[i]}"
-    local source_dir="${sections[i+1]}"
-    local mode="${sections[i+2]}"
-    local array_ref="${sections[i+3]}"
+print_section "Copying Logstash pipeline configs"
+copy_tree "Logstash pipeline configs" "elkserver/logstash/conf.d" 0644 PIPELINE_FILES
 
-    print_section "Copying ${title}"
-    local name
-    for name in "${!array_ref}"; do
-        copy_required_file "${source_dir}/${name}" "${BUNDLE_DIR}/${name}" "$mode"
-    done
-    unset name
-    unset title source_dir mode array_ref
-    shift 0
-    set +u
-    set -u
-    
-# purposely blank
+print_section "Copying Elasticsearch templates"
+copy_tree "Elasticsearch templates" "elkserver/elasticsearch/index-templates" 0644 TEMPLATE_FILES
 
-done
+print_section "Copying threat feeds"
+copy_tree "Threat feeds" "elkserver/logstash/threat-feeds" 0644 THREAT_FEED_FILES
+
+print_section "Copying helper scripts"
+copy_tree "Helper scripts" "scripts" 0755 HELPER_SCRIPTS
+
+print_section "Copying C2 Filebeat configs"
+copy_tree "C2 Filebeat configs" "c2servers" 0644 C2_CONFIGS
+
+print_section "Copying redirector Filebeat configs"
+copy_tree "Redirector Filebeat configs" "redirs" 0644 REDIR_CONFIGS
 
 print_section "Copying Kibana dashboards"
-copy_required_file "${SCRIPT_DIR}/elkserver/kibana/dashboards/${DASHBOARD_FILE}" "${BUNDLE_DIR}/${DASHBOARD_FILE}" 0644
+copy_required_file "${SCRIPT_DIR}/elkserver/kibana/dashboards/${DASHBOARD_FILE}" "${BUNDLE_DIR}/elkserver/kibana/dashboards/${DASHBOARD_FILE}" 0644
 
 print_section "Creating archive"
 tar -czf "$OUTPUT_TARBALL" "$BUNDLE_DIR"
