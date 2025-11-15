@@ -2,7 +2,7 @@
 # RedELK Deployment Verification Script
 # Comprehensive checks to ensure all components are properly deployed
 
-set -euo pipefail
+set -uo pipefail
 
 # Colors
 RED='\033[0;31m'
@@ -14,7 +14,35 @@ NC='\033[0m'
 # Configuration
 readonly REDELK_PATH="/opt/RedELK"
 readonly ES_USER="elastic"
-readonly ES_PASS="${ELASTIC_PASSWORD:-RedElk2024Secure}"
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+readonly SCRIPT_DIR
+readonly ENV_FILE="${SCRIPT_DIR}/../elkserver/.env"
+
+load_elastic_password() {
+    if [[ -n "${ELASTIC_PASSWORD:-}" ]]; then
+        printf '%s' "${ELASTIC_PASSWORD}"
+        return 0
+    fi
+
+    if [[ -f "${ENV_FILE}" ]]; then
+        local value=""
+        while IFS='=' read -r key val; do
+            if [[ "${key}" == "ELASTIC_PASSWORD" ]]; then
+                value=${val%$'\r'}
+            fi
+        done <"${ENV_FILE}"
+
+        if [[ -n "${value}" ]]; then
+            printf '%s' "${value}"
+            return 0
+        fi
+    fi
+
+    printf '%s' "RedElk2024Secure"
+}
+
+readonly ES_PASS="$(load_elastic_password)"
 
 # Counters
 CHECKS_PASSED=0
