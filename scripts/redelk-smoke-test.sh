@@ -116,9 +116,27 @@ setup.template.enabled: false
 logging.level: info
 YAML
 
-echo "[INFO] Running Filebeat ${ELASTIC_VERSION} smoke container"
+network_name="${DOCKER_NETWORK_NAME:-}"
+if [[ -z "$network_name" ]]; then
+    compose_env="${REDELK_PATH}/elkserver/.env"
+    if [[ -f "$compose_env" ]]; then
+        compose_project=$(grep -E '^COMPOSE_PROJECT_NAME=' "$compose_env" | cut -d'=' -f2)
+    fi
+    compose_project="${compose_project:-redelk}"
+    candidate="${compose_project}_redelk"
+    if docker network inspect "$candidate" >/dev/null 2>&1; then
+        network_name="$candidate"
+    elif docker network inspect redelk >/dev/null 2>&1; then
+        network_name="redelk"
+    else
+        echo "[ERROR] Could not determine Docker network for Filebeat (set DOCKER_NETWORK_NAME)" >&2
+        exit 1
+    fi
+fi
+
+echo "[INFO] Running Filebeat ${ELASTIC_VERSION} smoke container on network ${network_name}"
 docker run --rm \
-    --network redelk \
+    --network "${network_name}" \
     -v "${tmpdir}:/smoke:ro" \
     -v "${tmpdir}/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro" \
     -v "${CERT_PATH}:/etc/pki/tls/certs/redelk-ca.crt:ro" \

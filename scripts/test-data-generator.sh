@@ -4,6 +4,25 @@
 
 set -euo pipefail
 
+ITERATIONS=0
+SLEEP_SECONDS=2
+while (($#)); do
+    case "$1" in
+        --iterations)
+            ITERATIONS="$2"
+            shift 2
+            ;;
+        --sleep)
+            SLEEP_SECONDS="$2"
+            shift 2
+            ;;
+        *)
+            echo "Unknown argument: $1" >&2
+            exit 1
+            ;;
+    esac
+done
+
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 readonly SCRIPT_DIR
 readonly ENV_FILE="${SCRIPT_DIR}/../elkserver/.env"
@@ -174,27 +193,24 @@ echo ""
 
 counter=0
 while true; do
-    # Generate beacon data
-    send_data "rtops-$(date +%Y.%m.%d)" "$(generate_beacon_data)" &
-
-    # Generate redirector traffic (more frequent)
+    send_data "rtops-$(date +%Y.%m.%d)" "$(generate_beacon_data)"
     for i in {1..3}; do
-        send_data "redirtraffic-$(date +%Y.%m.%d)" "$(generate_redir_data)" &
+        send_data "redirtraffic-$(date +%Y.%m.%d)" "$(generate_redir_data)"
     done
-
-    # Generate occasional alarm
     if [ $((counter % 10)) -eq 0 ]; then
-        send_data "alarms-$(date +%Y.%m.%d)" "$(generate_alarm_data)" &
+        send_data "alarms-$(date +%Y.%m.%d)" "$(generate_alarm_data)"
     fi
 
     counter=$((counter + 1))
     echo -n "."
-
-    # Show progress every 10 iterations
     if [ $((counter % 10)) -eq 0 ]; then
         echo " Generated $counter batches"
     fi
 
-    # Wait between batches
-    sleep 2
+    if (( ITERATIONS > 0 && counter >= ITERATIONS )); then
+        echo "[INFO] Completed ${counter} batches"
+        break
+    fi
+
+    sleep "$SLEEP_SECONDS"
 done

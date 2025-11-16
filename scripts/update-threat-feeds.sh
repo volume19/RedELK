@@ -61,15 +61,15 @@ update_tor_nodes() {
     local tor_file="${FEED_DIR}/tor-exit-nodes.txt"
 
     if curl -sS "$tor_url" -o "${TEMP_DIR}/tor_raw.txt" 2>/dev/null; then
-        echo "# TOR Exit Node IPs - Updated $(date)" > "${TEMP_DIR}/tor-exit-nodes.txt"
-        echo "# Format: IP,\"true\"" >> "${TEMP_DIR}/tor-exit-nodes.txt"
+        echo "# TOR Exit Node map for Logstash translate filter" > "${TEMP_DIR}/tor-exit-nodes.txt"
+        echo "---" >> "${TEMP_DIR}/tor-exit-nodes.txt"
 
         grep "^ExitAddress" "${TEMP_DIR}/tor_raw.txt" | \
-            awk '{print $2 ",\"true\""}' >> "${TEMP_DIR}/tor-exit-nodes.txt"
+            awk '{print $2 ":\"true\""}' >> "${TEMP_DIR}/tor-exit-nodes.txt"
 
         if [ -s "${TEMP_DIR}/tor-exit-nodes.txt" ]; then
             mv "${TEMP_DIR}/tor-exit-nodes.txt" "$tor_file"
-            local count=$(grep -c ',"true"' "$tor_file")
+            local count=$(grep -cv '^#' "$tor_file")
             log "Successfully updated TOR exit nodes: $count IPs"
         else
             log "ERROR: TOR exit node list is empty, keeping existing file"

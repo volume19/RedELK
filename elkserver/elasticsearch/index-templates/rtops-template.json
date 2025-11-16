@@ -12,27 +12,53 @@
       "properties": {
         "@timestamp": { "type": "date" },
         "message": { "type": "text" },
-        "c2.program": { "type": "keyword" },
-        "c2.log_type": { "type": "keyword" },
-        "c2.operator": { "type": "keyword" },
-        "c2.teamserver": { "type": "keyword" },
-        "beacon.id": { "type": "keyword" },
-        "beacon.status": { "type": "keyword" },
-        "beacon.name": { "type": "keyword" },
-        "beacon.hostname": { "type": "keyword" },
-        "beacon.os": { "type": "keyword" },
-        "beacon.user": { "type": "keyword" },
-        "beacon.process": { "type": "keyword" },
-        "beacon.pid": { "type": "integer" },
-        "beacon.internal_ip": { "type": "ip" },
-        "beacon.external_ip": { "type": "ip" },
-        "beacon.sleep": { "type": "integer" },
-        "beacon.jitter": { "type": "integer" },
-        "beacon.last_checkin": { "type": "date" },
-        "beacon.note": { "type": "text" },
-        "command.input": { "type": "text" },
-        "command.output": { "type": "text" },
-        "command.type": { "type": "keyword" },
+        "infra": {
+          "properties": {
+            "log": {
+              "properties": {
+                "type": { "type": "keyword" },
+                "subtype": { "type": "keyword" }
+              }
+            }
+          }
+        },
+        "c2": {
+          "properties": {
+            "program": { "type": "keyword" },
+            "operator": { "type": "keyword" },
+            "teamserver": { "type": "keyword" },
+            "log": {
+              "properties": {
+                "type": { "type": "keyword" }
+              }
+            }
+          }
+        },
+        "beacon": {
+          "properties": {
+            "id": { "type": "keyword" },
+            "status": { "type": "keyword" },
+            "name": { "type": "keyword" },
+            "hostname": { "type": "keyword" },
+            "os": { "type": "keyword" },
+            "user": { "type": "keyword" },
+            "process": { "type": "keyword" },
+            "pid": { "type": "integer" },
+            "internal_ip": { "type": "ip" },
+            "external_ip": { "type": "ip" },
+            "sleep": { "type": "integer" },
+            "jitter": { "type": "integer" },
+            "last_checkin": { "type": "date" },
+            "note": { "type": "text" }
+          }
+        },
+        "command": {
+          "properties": {
+            "input": { "type": "text" },
+            "output": { "type": "text" },
+            "type": { "type": "keyword" }
+          }
+        },
         "file.path": { "type": "text" },
         "file.size": { "type": "long" },
         "file.hash.md5": { "type": "keyword" },
