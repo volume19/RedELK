@@ -17,6 +17,7 @@
         "c2.operator": { "type": "keyword" },
         "c2.teamserver": { "type": "keyword" },
         "beacon.id": { "type": "keyword" },
+        "beacon.status": { "type": "keyword" },
         "beacon.name": { "type": "keyword" },
         "beacon.hostname": { "type": "keyword" },
         "beacon.os": { "type": "keyword" },

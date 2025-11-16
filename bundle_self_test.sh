@@ -123,6 +123,19 @@ verify_expected_files() {
     printf '[INFO] Verified %s (%d files) in %s\n' "$description" "${#files[@]}" "$base_dir"
 }
 
+validate_rtops_template_fields() {
+    local template_path="$1"
+    shift
+    local -a fields=("$@")
+    printf '[INFO] Inspecting %s for required fields\n' "$template_path"
+    for field in "${fields[@]}"; do
+        if ! grep -Fq "\"${field}\"" "$template_path"; then
+            echo "[ERROR] Missing field \"${field}\" in ${template_path}" >&2
+            exit 1
+        fi
+    done
+}
+
 main() {
 readonly TARBALL="${1:-redelk-v3-deployment.tar.gz}"
 
@@ -174,6 +187,11 @@ check_dir_exists "elasticsearch/index-templates" "$SOURCE_TEMPLATE_DIR"
 verify_expected_files "Elasticsearch template" "$SOURCE_TEMPLATE_DIR" "${EXPECTED_TEMPLATE_FILES[@]}"
 template_count=$(find "$SOURCE_TEMPLATE_DIR" -maxdepth 1 -type f -name '*.json' | wc -l)
 printf '[INFO] index-templates contains %s *.json files\n' "$template_count"
+validate_rtops_template_fields \
+    "${SOURCE_TEMPLATE_DIR}/rtops-template.json" \
+    "beacon.status" \
+    "c2.operator" \
+    "command.type"
 
 print_section "Validating Kibana Dashboards"
 check_dir_exists "kibana/dashboards" "$SOURCE_DASHBOARD_DIR"

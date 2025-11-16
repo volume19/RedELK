@@ -17,11 +17,83 @@ readonly CYAN='\033[0;36m'
 readonly MAGENTA='\033[0;35m'
 readonly BOLD='\033[1m'
 readonly NC='\033[0m'
+readonly BACKUP_ROOT="/var/backups/redelk-filebeat"
+readonly CLEAN_INSTALL_MODE="${PRESERVE_EXISTING:-0}"
 
 log_info() { echo -e "${BLUE}ℹ${NC} $1"; }
 log_success() { echo -e "${GREEN}✓${NC} $1"; }
 log_error() { echo -e "${RED}✗${NC} $1"; }
 log_warn() { echo -e "${YELLOW}⚠${NC} $1"; }
+
+backup_and_remove() {
+    local path="$1"
+    local label="$2"
+    if [[ -e "$path" ]]; then
+        mkdir -p "$BACKUP_ROOT"
+        local stamp archive copy_dest
+        stamp=$(date +%Y%m%d%H%M%S)
+        archive="${BACKUP_ROOT}/${label}-${stamp}.tgz"
+        if tar -czf "$archive" -C "$(dirname "$path")" "$(basename "$path")" >/dev/null 2>&1; then
+            log_info "Archived ${label} to ${archive}"
+        else
+            copy_dest="${BACKUP_ROOT}/${label}-${stamp}"
+            cp -a "$path" "$copy_dest"
+            log_warn "Tar backup failed; copied to ${copy_dest} instead"
+            archive="$copy_dest"
+        fi
+        rm -rf "$path"
+        log_success "Removed ${path}"
+    fi
+}
+
+wipe_previous_installation() {
+    if [[ "$CLEAN_INSTALL_MODE" == "1" ]]; then
+        log_warn "PRESERVE_EXISTING=1 set - skipping cleanup and keeping current Filebeat configuration"
+        return
+    fi
+
+    log_info "Preferred clean install path selected - wiping prior Filebeat deployment"
+
+    if systemctl list-unit-files | grep -q "^filebeat\.service"; then
+        echo -ne "${CYAN}Stopping and disabling old filebeat service...${NC} "
+        systemctl stop filebeat 2>/dev/null || true
+        systemctl disable filebeat 2>/dev/null || true
+        systemctl reset-failed filebeat 2>/dev/null || true
+        echo -e "${GREEN}✓${NC}"
+    else
+        echo -e "${BLUE}ℹ${NC} No existing systemd unit found"
+    fi
+
+    if dpkg -s filebeat >/dev/null 2>&1; then
+        echo -ne "${CYAN}Purging previous Filebeat package...${NC} "
+        DEBIAN_FRONTEND=noninteractive apt-get purge -y filebeat >/dev/null 2>&1 || true
+        DEBIAN_FRONTEND=noninteractive apt-get autoremove -y >/dev/null 2>&1 || true
+        echo -e "${GREEN}✓${NC}"
+    fi
+
+    backup_and_remove "/etc/filebeat" "etc-filebeat"
+
+    if [[ -d /var/lib/filebeat ]]; then
+        echo -ne "${CYAN}Removing /var/lib/filebeat...${NC} "
+        rm -rf /var/lib/filebeat 2>/dev/null || true
+        echo -e "${GREEN}✓${NC}"
+    fi
+
+    if [[ -d /var/log/filebeat ]]; then
+        echo -ne "${CYAN}Removing /var/log/filebeat...${NC} "
+        rm -rf /var/log/filebeat 2>/dev/null || true
+        echo -e "${GREEN}✓${NC}"
+    fi
+
+    if [[ -d /etc/systemd/system/filebeat.service.d ]]; then
+        echo -ne "${CYAN}Removing systemd overrides...${NC} "
+        rm -rf /etc/systemd/system/filebeat.service.d 2>/dev/null || true
+        echo -e "${GREEN}✓${NC}"
+    fi
+
+    systemctl daemon-reload 2>/dev/null || true
+    log_success "Previous Filebeat configuration removed (set PRESERVE_EXISTING=1 to skip in future runs)"
+}
 
 error_exit() {
     log_error "$1"
@@ -121,44 +193,7 @@ echo "║                    PHASE 1: CLEANUP PREVIOUS INSTALLATION             
 echo "╚═══════════════════════════════════════════════════════════════════════════╝"
 echo ""
 
-# Stop filebeat service
-if systemctl is-active --quiet filebeat 2>/dev/null; then
-    echo -ne "${CYAN}Stopping filebeat service...${NC} "
-    systemctl stop filebeat 2>/dev/null || true
-    systemctl disable filebeat 2>/dev/null || true
-    echo -e "${GREEN}✓${NC}"
-else
-    echo -e "${BLUE}ℹ${NC} No running filebeat service found"
-fi
-
-# Backup existing config
-if [[ -f /etc/filebeat/filebeat.yml ]]; then
-    BACKUP_FILE="/etc/filebeat/filebeat.yml.backup.$(date +%s)"
-    echo -ne "${CYAN}Backing up existing config...${NC} "
-    cp /etc/filebeat/filebeat.yml "$BACKUP_FILE" 2>/dev/null || true
-    echo -e "${GREEN}✓${NC} ${YELLOW}(saved to ${BACKUP_FILE})${NC}"
-fi
-
-# Remove old registry (forces re-scan of log files)
-if [[ -d /var/lib/filebeat/registry ]]; then
-    echo -ne "${CYAN}Removing old registry...${NC} "
-    rm -rf /var/lib/filebeat/registry 2>/dev/null || true
-    echo -e "${GREEN}✓${NC} ${YELLOW}(will re-scan all logs)${NC}"
-fi
-
-# Clean old logs
-if [[ -d /var/log/filebeat ]] && [[ -n "$(ls -A /var/log/filebeat 2>/dev/null)" ]]; then
-    echo -ne "${CYAN}Cleaning old filebeat logs...${NC} "
-    rm -rf /var/log/filebeat/* 2>/dev/null || true
-    echo -e "${GREEN}✓${NC}"
-fi
-
-# Remove old data
-if [[ -d /var/lib/filebeat/data ]]; then
-    echo -ne "${CYAN}Removing old filebeat data...${NC} "
-    rm -rf /var/lib/filebeat/data 2>/dev/null || true
-    echo -e "${GREEN}✓${NC}"
-fi
+wipe_previous_installation
 
 echo ""
 echo "╔═══════════════════════════════════════════════════════════════════════════╗"
