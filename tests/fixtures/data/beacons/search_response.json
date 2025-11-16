@@ -1,0 +1,14 @@
+{
+  "hits": {
+    "total": {"value": 1},
+    "hits": [
+      {
+        "_source": {
+          "@timestamp": "2024-05-12T12:00:10Z",
+          "beacon": {"id": "beacon-123", "hostname": "alpha"},
+          "message": "alpha host contacted C2"
+        }
+      }
+    ]
+  }
+}

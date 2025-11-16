@@ -129,7 +129,16 @@ validate_rtops_template_fields() {
     local -a fields=("$@")
     printf '[INFO] Inspecting %s for required fields\n' "$template_path"
     for field in "${fields[@]}"; do
-        if ! grep -Fq "\"${field}\"" "$template_path"; then
+        local jq_expr=".template.mappings.properties"
+        IFS='.' read -r -a parts <<<"$field"
+        local last_index=$((${#parts[@]} - 1))
+        for idx in "${!parts[@]}"; do
+            jq_expr+=".${parts[$idx]}"
+            if [[ $idx -lt $last_index ]]; then
+                jq_expr+=".properties"
+            fi
+        done
+        if ! jq -e "$jq_expr" "$template_path" >/dev/null 2>&1; then
             echo "[ERROR] Missing field \"${field}\" in ${template_path}" >&2
             exit 1
         fi

@@ -1,0 +1,25 @@
+{
+  "hits": {
+    "total": {"value": 1},
+    "hits": [
+      {
+        "_source": {
+          "@timestamp": "2024-05-12T12:00:00Z",
+          "beacon": {
+            "id": "beacon-123",
+            "hostname": "alpha",
+            "user": "operator",
+            "process": "explorer.exe",
+            "pid": 1337,
+            "internal_ip": "10.10.10.5",
+            "external_ip": "198.51.100.5",
+            "os": "windows",
+            "sleep": 30,
+            "jitter": 20,
+            "note": "Test beacon"
+          }
+        }
+      }
+    ]
+  }
+}
