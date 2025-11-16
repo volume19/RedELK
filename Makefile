@@ -1,14 +1,18 @@
-.PHONY: test test-unit test-integration test-e2e
+.PHONY: test test-fast test-integration test-e2e test-nfr
 
-TEST_RUNNER=./tests/run-tests.sh
+PYTEST ?= python3 -m pytest
 
-test: test-unit test-integration test-e2e
-
-test-unit:
-	$(TEST_RUNNER) unit
+test-fast:
+	$(PYTEST) -m "unit"
 
 test-integration:
-	$(TEST_RUNNER) integration
+	$(PYTEST) -m "unit or integration or security"
 
 test-e2e:
-	$(TEST_RUNNER) e2e
+	$(PYTEST) -m "e2e"
+
+test-nfr:
+	$(PYTEST) -m "nfr"
+
+test:
+	$(PYTEST)

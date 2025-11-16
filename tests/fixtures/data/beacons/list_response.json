@@ -1,0 +1,16 @@
+{
+  "aggregations": {
+    "beacons": {
+      "buckets": [
+        {
+          "key": "beacon-123",
+          "hostname": {"buckets": [{"key": "alpha"}]},
+          "user": {"buckets": [{"key": "operator"}]},
+          "internal_ip": {"buckets": [{"key": "10.0.0.5"}]},
+          "os": {"buckets": [{"key": "linux"}]},
+          "last_seen": {"value_as_string": "2024-01-01T00:00:00.000Z"}
+        }
+      ]
+    }
+  }
+}

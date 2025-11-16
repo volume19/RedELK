@@ -1,0 +1,6 @@
+{
+  "prefixes": [
+    {"ip_prefix": "198.18.0.0/15", "service": "CLOUDFRONT"},
+    {"ip_prefix": "198.19.0.0/16", "service": "S3"}
+  ]
+}
